@@ -2,4 +2,5 @@ fastapi
 uvicorn
 twilio
 firebase-admin
+python-multipart
 

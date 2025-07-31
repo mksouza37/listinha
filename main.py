@@ -12,6 +12,9 @@ twilio_client = Client(
 )
 TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
+@app.get("/")
+def root():
+    return {"message": "Listinha is running"}
 
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
