@@ -99,7 +99,8 @@ async def whatsapp_webhook(request: Request):
         added = add_item(phone, message)
         if added:
             #send_message(from_number, f"✅ Adicionado: *{message}*")
-        else:
+            print()
+        else:"Adicionado."
             send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
 
     else:
