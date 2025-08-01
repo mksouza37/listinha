@@ -3,4 +3,7 @@ uvicorn
 twilio
 firebase-admin
 python-multipart
+jinja2
+weasyprint
+
 

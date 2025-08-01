@@ -1,8 +1,12 @@
 from fastapi import FastAPI, Request
 from firebase import add_item, get_items, delete_item, clear_items
 from firebase import set_default_group_if_missing
-import os
+from firebase import get_items, get_user_group
 from twilio.rest import Client
+from fastapi.responses import HTMLResponse, Response
+from jinja2 import Template
+import weasyprint
+import os
 
 app = FastAPI()
 
@@ -16,6 +20,20 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 @app.get("/")
 def root():
     return {"message": "Listinha is running"}
+
+@app.get("/view")
+def view_list(g: str):
+    items = get_items_from_doc_id(g)
+    return HTMLResponse(content=render_list_page(g, items))
+
+@app.get("/view/pdf")
+def view_pdf(g: str):
+    items = get_items_from_doc_id(g)
+    html = render_list_page(g, items)
+    pdf = weasyprint.HTML(string=html).write_pdf()
+    return Response(content=pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
+    })
 
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
@@ -49,8 +67,15 @@ async def whatsapp_webhook(request: Request):
     # VIEW: /v
     elif command == "/v":
         items = get_items(phone)
-        text = "🛒 Sua Listinha:\n" + "\n".join(f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
-        send_message(from_number, text)
+        if len(items) > 20:
+            group = get_user_group(phone)
+            doc_id = f"{group['owner']}__{group['list']}"
+            send_message(from_number,
+                         f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha.app/view?g={doc_id}")
+        else:
+            text = "🛒 Sua Listinha:\n" + "\n".join(
+                f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
+            send_message(from_number, text)
 
     # DELETE ALL: /l
     elif command == "/l":
@@ -73,7 +98,7 @@ async def whatsapp_webhook(request: Request):
     elif not message.startswith("/"):
         added = add_item(phone, message)
         if added:
-            send_message(from_number, f"✅ Adicionado: *{message}*")
+            #send_message(from_number, f"✅ Adicionado: *{message}*")
         else:
             send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
 
@@ -88,3 +113,16 @@ def send_message(to, body):
         to=to,
         body=body
     )
+
+def get_items_from_doc_id(doc_id):
+    from firebase_admin import firestore
+    ref = firestore.client().collection("listas").document(doc_id)
+    doc = ref.get()
+    return doc.to_dict()["itens"] if doc.exists else []
+
+def render_list_page(doc_id, items):
+    with open("templates/list.html", encoding="utf-8") as f:
+        html = f.read()
+    template = Template(html)
+    return template.render(doc_id=doc_id, items=items, count=len(items))
+
