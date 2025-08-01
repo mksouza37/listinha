@@ -10,12 +10,28 @@ cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
+
+def get_user_group(phone):
+    ref = db.collection("users").document(phone)
+    doc = ref.get()
+    if doc.exists:
+        return doc.to_dict().get("group")
+    return {"owner": phone, "list": "default"}
+
+
+def set_default_group_if_missing(phone):
+    ref = db.collection("users").document(phone)
+    if not ref.get().exists:
+        ref.set({"group": {"owner": phone, "list": "default"}})
+
+
 def add_item(phone, item):
-    ref = db.collection("listas").document(phone)
+    group = get_user_group(phone)
+    doc_id = f"{group['owner']}__{group['list']}"
+    ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
 
-    # Check for duplicates (case-insensitive)
     if any(i.lower() == item.lower() for i in items):
         return False  # Duplicate
 
@@ -23,22 +39,31 @@ def add_item(phone, item):
     ref.set({"itens": items})
     return True
 
+
 def get_items(phone):
-    ref = db.collection("listas").document(phone)
+    group = get_user_group(phone)
+    doc_id = f"{group['owner']}__{group['list']}"
+    ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     return doc.to_dict()["itens"] if doc.exists else []
 
-def clear_items(phone):
-    db.collection("listas").document(phone).set({"itens": []})
 
-def delete_item(phone, item_name):  # 👈 Renamed from remove_item
-    ref = db.collection("listas").document(phone)
+def clear_items(phone):
+    group = get_user_group(phone)
+    doc_id = f"{group['owner']}__{group['list']}"
+    db.collection("listas").document(doc_id).set({"itens": []})
+
+
+def delete_item(phone, item_name):
+    group = get_user_group(phone)
+    doc_id = f"{group['owner']}__{group['list']}"
+    ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     if not doc.exists:
         return False
     items = doc.to_dict()["itens"]
-    new_items = [i for i in items if i.lower() != item_name.lower()]  # case-insensitive match
+    new_items = [i for i in items if i.lower() != item_name.lower()]
     if len(new_items) == len(items):
-        return False  # item not found
+        return False
     ref.set({"itens": new_items})
     return True

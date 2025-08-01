@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from firebase import add_item, get_items, delete_item, clear_items
+from firebase import set_default_group_if_missing
 import os
 from twilio.rest import Client
 
@@ -22,6 +23,7 @@ async def whatsapp_webhook(request: Request):
     from_number = form.get("From")  # "whatsapp:+551199999999"
     message = form.get("Body").strip()
     phone = from_number.replace("whatsapp:", "")
+    set_default_group_if_missing(phone)
 
     print("📞 From:", from_number)
     print("📲 Message:", message)
