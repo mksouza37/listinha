@@ -32,14 +32,15 @@ async def whatsapp_webhook(request: Request):
     else:
         command = message.strip().lower()
 
-    # MENU: /m
-    if command == "/m":
+    # MENU:
+    MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
+    if command in MENU_ALIASES:
         menu = (
             "📝 *Listinha Menu*:\n\n"
             "📥 Adicionar item: digite o nome diretamente\n"
-            "📋 Ver lista: /v\n"
-            "🧹 Limpar lista: /l\n"
-            "❌ Remover item: /d nome_do_item\n"
+            "📋 Ver lista: v\n"
+            "🧹 Limpar lista: l\n"
+            "❌ Apagar item: a nome_do_item\n"
         )
         send_message(from_number, menu)
 
@@ -54,8 +55,8 @@ async def whatsapp_webhook(request: Request):
         clear_items(phone)
         send_message(from_number, "✅ Sua listinha foi limpa!")
 
-    # DELETE ITEM: /d arroz
-    elif command.startswith("/d "):
+    # DELETE ITEM: /a arroz
+    elif command.startswith("/a "):
         item = command[3:].strip()
         if item:
             deleted = delete_item(phone, item)
@@ -68,8 +69,11 @@ async def whatsapp_webhook(request: Request):
 
     # ADD ITEM: if original input had no slash
     elif not message.startswith("/"):
-        add_item(phone, message)
-        send_message(from_number, f"✅ Adicionado: *{message}*")
+        added = add_item(phone, message)
+        if added:
+            send_message(from_number, f"✅ Adicionado: *{message}*")
+        else:
+            send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
 
     else:
         send_message(from_number, "❓ Comando não reconhecido. Envie /m para ver o menu.")

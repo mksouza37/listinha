@@ -14,8 +14,14 @@ def add_item(phone, item):
     ref = db.collection("listas").document(phone)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
+
+    # Check for duplicates (case-insensitive)
+    if any(i.lower() == item.lower() for i in items):
+        return False  # Duplicate
+
     items.append(item)
     ref.set({"itens": items})
+    return True
 
 def get_items(phone):
     ref = db.collection("listas").document(phone)
