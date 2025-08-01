@@ -26,8 +26,14 @@ async def whatsapp_webhook(request: Request):
     print("📞 From:", from_number)
     print("📲 Message:", message)
 
+    # 👇 Add slash if missing
+    if not message.startswith("/"):
+        command = "/" + message.strip().lower()
+    else:
+        command = message.strip().lower()
+
     # MENU: /m
-    if message.lower() == "/m":
+    if command == "/m":
         menu = (
             "📝 *Listinha Menu*:\n\n"
             "📥 Adicionar item: digite o nome diretamente\n"
@@ -38,19 +44,19 @@ async def whatsapp_webhook(request: Request):
         send_message(from_number, menu)
 
     # VIEW: /v
-    elif message.lower() == "/v":
+    elif command == "/v":
         items = get_items(phone)
         text = "🛒 Sua Listinha:\n" + "\n".join(f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
         send_message(from_number, text)
 
     # DELETE ALL: /l
-    elif message.lower() == "/l":
+    elif command == "/l":
         clear_items(phone)
         send_message(from_number, "✅ Sua listinha foi limpa!")
 
     # DELETE ITEM: /d arroz
-    elif message.lower().startswith("/d "):
-        item = message[3:].strip()
+    elif command.startswith("/d "):
+        item = command[3:].strip()
         if item:
             deleted = delete_item(phone, item)
             if deleted:
@@ -60,7 +66,7 @@ async def whatsapp_webhook(request: Request):
         else:
             send_message(from_number, "⚠️ Especifique o item: `/d nome_do_item`")
 
-    # ADD ITEM: anything not starting with /
+    # ADD ITEM: if original input had no slash
     elif not message.startswith("/"):
         add_item(phone, message)
         send_message(from_number, f"✅ Adicionado: *{message}*")
