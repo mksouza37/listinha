@@ -25,7 +25,7 @@
   <h1>🛒 Sua Listinha ({{ count }} itens)</h1>
   <ul>
     {% for item in items %}
-    <li>• {{ item }}</li>
+    <li>{{ item if item.startswith('•') or item.startswith('.') else '• ' + item }}</li>
     {% endfor %}
   </ul>
 
