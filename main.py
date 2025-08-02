@@ -22,10 +22,24 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 def root():
     return {"message": "Listinha is running"}
 
+#@app.get("/view")
+#def view_list(g: str):
+#    items = get_items_from_doc_id(g)
+#    return HTMLResponse(content=render_list_page(g, items))
+
 @app.get("/view")
 def view_list(g: str):
-    items = get_items_from_doc_id(g)
-    return HTMLResponse(content=render_list_page(g, items))
+    print(f"🔍 /view called with doc_id: '{g}'")
+    from firebase_admin import firestore
+    ref = firestore.client().collection("listas").document(g)
+    doc = ref.get()
+    if not doc.exists:
+        print(f"⚠️ Document not found: {g}")
+        return HTMLResponse("❌ Lista não encontrada.")
+
+    data = doc.to_dict()
+    print(f"📦 Found doc with {len(data.get('itens', []))} items")
+    return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
 @app.get("/view/pdf")
 def view_pdf(g: str):
