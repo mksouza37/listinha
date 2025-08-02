@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from jinja2 import Template
 import weasyprint
 import os
+from urllib.parse import quote
 
 app = FastAPI()
 
@@ -69,7 +70,8 @@ async def whatsapp_webhook(request: Request):
         items = get_items(phone)
         if len(items) > 20:
             group = get_user_group(phone)
-            doc_id = f"{group['owner']}__{group['list']}"
+            raw_doc_id = f"{group['owner']}__{group['list']}"
+            doc_id = quote(raw_doc_id, safe="")
             send_message(from_number,
                          f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
 
