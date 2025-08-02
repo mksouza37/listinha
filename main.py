@@ -109,11 +109,18 @@ async def whatsapp_webhook(request: Request):
     return {"status": "ok"}
 
 def send_message(to, body):
-    twilio_client.messages.create(
-        from_=f"whatsapp:{TWILIO_NUMBER}",
-        to=to,
-        body=body
-    )
+    try:
+        print(f"📤 Sending to: {to}")
+        print(f"📨 Message body: {body}")
+        message = twilio_client.messages.create(
+            from_=f"whatsapp:{TWILIO_NUMBER}",
+            to=to,
+            body=body
+        )
+        print(f"✅ Message sent successfully. SID: {message.sid}")
+    except Exception as e:
+        print("❌ Error sending message via Twilio:")
+        print(str(e))
 
 def get_items_from_doc_id(doc_id):
     from firebase_admin import firestore
