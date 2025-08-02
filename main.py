@@ -71,7 +71,8 @@ async def whatsapp_webhook(request: Request):
             group = get_user_group(phone)
             doc_id = f"{group['owner']}__{group['list']}"
             send_message(from_number,
-                         f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha.app/view?g={doc_id}")
+                         f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
+
         else:
             text = "🛒 Sua Listinha:\n" + "\n".join(
                 f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
