@@ -32,6 +32,12 @@
       text-decoration: none;
       font-weight: bold;
     }
+    /* Oculta elementos com essa classe no PDF */
+    @media print {
+      .hide-on-pdf {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -42,7 +48,7 @@
     {% endfor %}
   </ol>
 
-  <div class="actions">
+  <div class="actions hide-on-pdf">
     <a class="button" href="/view/pdf?g={{ doc_id }}" target="_blank">📎 Baixar como PDF</a>
   </div>
 </body>

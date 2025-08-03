@@ -41,7 +41,7 @@ def view_list(g: str):
 def view_pdf(g: str):
     doc_id = unquote_plus(g)
     items = get_items_from_doc_id(doc_id)
-    html = render_list_page(g, items)
+    html = render_list_page(doc_id, items)  # ← usa doc_id correto
     pdf = weasyprint.HTML(string=html).write_pdf()
     return Response(content=pdf, media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
