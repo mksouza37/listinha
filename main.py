@@ -37,9 +37,11 @@ def view_list(g: str):
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
     return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
+from urllib.parse import unquote_plus
+
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    doc_id = unquote_plus(g)
+    doc_id = unquote_plus(g)  # Corrigido aqui!
     print(f"📄 Generating PDF for doc_id: '{doc_id}'")
     from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(doc_id)
