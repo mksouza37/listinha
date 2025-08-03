@@ -25,7 +25,6 @@ def root():
 
 @app.get("/view")
 def view_list(g: str):
-    print(f"🔍 /view called with doc_id: '{g}'")
     from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
@@ -39,6 +38,9 @@ def view_list(g: str):
 
 @app.get("/view/pdf")
 def view_pdf(g: str):
+    print(f"📥 Raw g: {repr(g)}")  # Isso mostra exatamente o que chegou
+    doc_id = unquote(g)
+    print("📄 doc_id final:", repr(doc_id))
     print(f"📄 Generating PDF for doc_id: '{g}'")
     from firebase_admin import firestore
 
@@ -54,7 +56,10 @@ def view_pdf(g: str):
     items = data.get("itens", [])
     print(f"📄 PDF includes {len(items)} items")
 
-    html = render_list_page(doc_id, items)
+    doc_id = group['owner'] + '__' + group['list']
+    doc_id_encoded = quote(doc_id, safe="")  # ← importante
+    html = render_list_page(doc_id_encoded, items)
+
     pdf = weasyprint.HTML(string=html).write_pdf()
 
     return Response(content=pdf, media_type="application/pdf", headers={
