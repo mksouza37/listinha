@@ -161,9 +161,20 @@ def get_items_from_doc_id(doc_id):
     doc = ref.get()
     return doc.to_dict()["itens"] if doc.exists else []
 
+#def render_list_page(doc_id, items):
+#    with open("templates/list.html", encoding="utf-8") as f:
+#        html = f.read()
+#    template = Template(html)
+#    return template.render(doc_id=doc_id, items=items, count=len(items))
+
+from urllib.parse import quote
+
 def render_list_page(doc_id, items):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
     template = Template(html)
-    return template.render(doc_id=doc_id, items=items, count=len(items))
+
+    doc_id_encoded = quote(doc_id, safe="")  # codifica para usar na URL
+    return template.render(doc_id=doc_id_encoded, items=items, count=len(items))
+
 
