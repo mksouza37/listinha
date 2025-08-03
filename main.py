@@ -8,6 +8,7 @@ from jinja2 import Template
 import weasyprint
 import os
 from urllib.parse import quote
+from urllib.parse import unquote_plus
 
 app = FastAPI()
 
@@ -21,11 +22,6 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 @app.get("/")
 def root():
     return {"message": "Listinha is running"}
-
-#@app.get("/view")
-#def view_list(g: str):
-#    items = get_items_from_doc_id(g)
-#    return HTMLResponse(content=render_list_page(g, items))
 
 @app.get("/view")
 def view_list(g: str):
@@ -43,8 +39,7 @@ def view_list(g: str):
 
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    from urllib.parse import unquote
-    doc_id = unquote(g)  # Garantir que decodificamos se veio por URL
+    doc_id = unquote_plus(g)
     print(f"📄 Generating PDF for doc_id: '{doc_id}'")
     from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(doc_id)

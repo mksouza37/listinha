@@ -5,17 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Listinha</title>
   <style>
-    body { font-family: sans-serif; padding: 2rem; background: #fafafa; }
-    h1 { font-size: 1.5rem; }
-    ol { padding-left: 1.5rem; }
-    li { margin: 0.5rem 0; }
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      background: #fafafa;
+    }
+    h1 {
+      font-size: 1.5rem;
+    }
+    ol {
+      padding-left: 1.5rem;
+    }
+    li {
+      margin: 0.5rem 0;
+    }
     .actions {
-  margin-top: 2rem;
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
+      margin-top: 2rem;
+      text-align: left;
+    }
+    a.button {
+      display: inline-block;
+      padding: 0.5rem 1.2rem;
+      background: #000000;
+      color: white;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -28,8 +44,6 @@
 
   <div class="actions">
     <a class="button" href="/view/pdf?g={{ doc_id }}" target="_blank">📎 Baixar como PDF</a>
-    <a class="button" href="https://wa.me/?text=Minha%20listinha:%20https://listinha-t5ga.onrender.com/view?g={{ doc_id }}" target="_blank">
-
   </div>
 </body>
 </html>
