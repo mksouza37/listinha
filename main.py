@@ -9,8 +9,6 @@ import weasyprint
 import os
 from urllib.parse import quote
 from urllib.parse import unquote_plus
-from urllib.parse import unquote
-
 
 app = FastAPI()
 
@@ -41,7 +39,7 @@ def view_list(g: str):
 @app.get("/view/pdf")
 def view_pdf(g: str):
     print(f"📥 Raw g: {repr(g)}")  # Isso mostra exatamente o que chegou
-    doc_id = unquote(g)
+    doc_id = unquote_plus(g)
     print("📄 doc_id final:", repr(doc_id))
     print(f"📄 Generating PDF for doc_id: '{g}'")
     from firebase_admin import firestore
