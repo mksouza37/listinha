@@ -8,7 +8,6 @@ from jinja2 import Template
 import weasyprint
 import os
 from urllib.parse import quote
-from urllib.parse import unquote_plus
 
 app = FastAPI()
 
@@ -37,25 +36,13 @@ def view_list(g: str):
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
     return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
-from urllib.parse import unquote_plus
-
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    doc_id = unquote_plus(g)  # Corrigido aqui!
-    print(f"📄 Generating PDF for doc_id: '{doc_id}'")
-    from firebase_admin import firestore
-    ref = firestore.client().collection("listas").document(doc_id)
-    doc = ref.get()
-    if not doc.exists:
-        print(f"❌ Document not found: {doc_id}")
-        return Response(content="Documento não encontrado.", media_type="text/plain")
-
-    data = doc.to_dict()
-    items = data.get("itens", [])
+    items = get_items_from_doc_id(g)  # Usa função robusta
     html = render_list_page(g, items)
     pdf = weasyprint.HTML(string=html).write_pdf()
     return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
+        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
     })
 
 @app.post("/webhook")
