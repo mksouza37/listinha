@@ -41,32 +41,24 @@ def view_list(g: str):
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
     return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
-#@app.get("/view/pdf")
-#def view_pdf(g: str):
-#    items = get_items_from_doc_id(g)
-#    html = render_list_page(g, items)
-#    pdf = weasyprint.HTML(string=html).write_pdf()
-#    return Response(content=pdf, media_type="application/pdf", headers={
-#        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
-#    })
-
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    print(f"📄 Generating PDF for doc_id: '{g}'")
+    from urllib.parse import unquote
+    doc_id = unquote(g)  # Garantir que decodificamos se veio por URL
+    print(f"📄 Generating PDF for doc_id: '{doc_id}'")
     from firebase_admin import firestore
-    ref = firestore.client().collection("listas").document(g)
+    ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
     if not doc.exists:
-        print(f"❌ Document not found: {g}")
+        print(f"❌ Document not found: {doc_id}")
         return Response(content="Documento não encontrado.", media_type="text/plain")
 
     data = doc.to_dict()
     items = data.get("itens", [])
-    print(f"📄 PDF includes {len(items)} items")
     html = render_list_page(g, items)
     pdf = weasyprint.HTML(string=html).write_pdf()
     return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
+        "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
     })
 
 @app.post("/webhook")
