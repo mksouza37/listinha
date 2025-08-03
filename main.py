@@ -8,6 +8,7 @@ from jinja2 import Template
 import weasyprint
 import os
 from urllib.parse import quote
+from urllib.parse import unquote_plus
 
 app = FastAPI()
 
@@ -38,11 +39,12 @@ def view_list(g: str):
 
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    items = get_items_from_doc_id(g)  # Usa função robusta
+    doc_id = unquote_plus(g)
+    items = get_items_from_doc_id(doc_id)
     html = render_list_page(g, items)
     pdf = weasyprint.HTML(string=html).write_pdf()
     return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
+        "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
     })
 
 @app.post("/webhook")
