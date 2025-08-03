@@ -39,13 +39,28 @@ def view_list(g: str):
 
 @app.get("/view/pdf")
 def view_pdf(g: str):
+    print(f"📄 Generating PDF for doc_id: '{g}'")
+    from firebase_admin import firestore
+
     doc_id = unquote_plus(g)
-    items = get_items_from_doc_id(doc_id)
-    html = render_list_page(doc_id, items)  # ← usa doc_id correto
+    ref = firestore.client().collection("listas").document(doc_id)
+    doc = ref.get()
+
+    if not doc.exists:
+        print(f"❌ Document not found: {doc_id}")
+        return Response(content="Documento não encontrado.", media_type="text/plain")
+
+    data = doc.to_dict()
+    items = data.get("itens", [])
+    print(f"📄 PDF includes {len(items)} items")
+
+    html = render_list_page(doc_id, items)
     pdf = weasyprint.HTML(string=html).write_pdf()
+
     return Response(content=pdf, media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
     })
+
 
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
