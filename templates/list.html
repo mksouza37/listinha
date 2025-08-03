@@ -7,7 +7,7 @@
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #fafafa; }
     h1 { font-size: 1.5rem; }
-    ul { padding-left: 1.2rem; }
+    ol { padding-left: 1.5rem; }
     li { margin: 0.5rem 0; }
     .actions { margin-top: 2rem; }
     a.button {
@@ -23,11 +23,11 @@
 </head>
 <body>
   <h1>🛒 Sua Listinha ({{ count }} itens)</h1>
-  <ul>
+  <ol>
     {% for item in items %}
-    <li>{{ item if item.startswith('•') or item.startswith('.') else '• ' + item }}</li>
+    <li>{{ item.lstrip('.• ').strip() }}</li>
     {% endfor %}
-  </ul>
+  </ol>
 
   <div class="actions">
     <a class="button" href="/view/pdf?g={{ doc_id }}" target="_blank">📎 Baixar como PDF</a>
