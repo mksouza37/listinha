@@ -36,15 +36,16 @@ def view_list(g: str):
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
     return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
+from urllib.parse import unquote_plus
+
 @app.get("/view/pdf")
 def view_pdf(g: str):
-    print(f"📥 Raw g: {repr(g)}")  # Isso mostra exatamente o que chegou
+    print(f"📥 Raw g: {repr(g)}")
     doc_id = unquote_plus(g)
     print("📄 doc_id final:", repr(doc_id))
-    print(f"📄 Generating PDF for doc_id: '{g}'")
-    from firebase_admin import firestore
+    print(f"📄 Generating PDF for doc_id: '{doc_id}'")
 
-    doc_id = unquote_plus(g)
+    from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
 
@@ -55,7 +56,8 @@ def view_pdf(g: str):
     data = doc.to_dict()
     items = data.get("itens", [])
     print(f"📄 PDF includes {len(items)} items")
-    html = render_list_page(doc_id_encoded, items)
+
+    html = render_list_page(g, items)  # g é o ID codificado com %2B
 
     pdf = weasyprint.HTML(string=html).write_pdf()
 
