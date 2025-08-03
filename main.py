@@ -9,6 +9,8 @@ import weasyprint
 import os
 from urllib.parse import quote
 from urllib.parse import unquote_plus
+from urllib.parse import unquote
+
 
 app = FastAPI()
 
