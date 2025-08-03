@@ -55,9 +55,6 @@ def view_pdf(g: str):
     data = doc.to_dict()
     items = data.get("itens", [])
     print(f"📄 PDF includes {len(items)} items")
-
-    doc_id = group['owner'] + '__' + group['list']
-    doc_id_encoded = quote(doc_id, safe="")  # ← importante
     html = render_list_page(doc_id_encoded, items)
 
     pdf = weasyprint.HTML(string=html).write_pdf()
