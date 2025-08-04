@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request
 from firebase import add_item, get_items, delete_item, clear_items
 from firebase import set_default_group_if_missing
-from firebase import get_items, get_user_group
+from firebase import get_user_group
+from firebase_admin import firestore
 from twilio.rest import Client
 from fastapi.responses import HTMLResponse, Response
 from jinja2 import Template
@@ -25,7 +26,6 @@ def root():
 
 @app.get("/view")
 def view_list(g: str):
-    from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
@@ -36,16 +36,31 @@ def view_list(g: str):
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
     return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
 
-from urllib.parse import unquote_plus
-
 @app.get("/view/pdf")
+def view_list(g: str):
+    ref = firestore.client().collection("listas").document(g)
+    doc = ref.get()
+    if not doc.exists:
+        print(f"⚠️ Document not found: {g}")
+        return HTMLResponse("❌ Lista não encontrada.")
+
+    data = doc.to_dict()
+    print(f"📦 Found doc with {len(data.get('itens', []))} items")
+    content=render_list_page(g, data.get("itens", []))
+
+    pdf = weasyprint.HTML(string=content).write_pdf()
+
+    return Response(content=pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
+    })
+
+@app.get("/view/pdfA")
 def view_pdf(g: str):
     print(f"📥 Raw g: {repr(g)}")
     doc_id = unquote_plus(g)
     print("📄 doc_id final:", repr(doc_id))
     print(f"📄 Generating PDF for doc_id: '{doc_id}'")
 
-    from firebase_admin import firestore
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
 
@@ -156,18 +171,10 @@ def send_message(to, body):
         print(str(e))
 
 def get_items_from_doc_id(doc_id):
-    from firebase_admin import firestore
+
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
     return doc.to_dict()["itens"] if doc.exists else []
-
-#def render_list_page(doc_id, items):
-#    with open("templates/list.html", encoding="utf-8") as f:
-#        html = f.read()
-#    template = Template(html)
-#    return template.render(doc_id=doc_id, items=items, count=len(items))
-
-from urllib.parse import quote
 
 def render_list_page(doc_id, items):
     with open("templates/list.html", encoding="utf-8") as f:
