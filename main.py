@@ -70,8 +70,6 @@ async def whatsapp_webhook(request: Request):
     phone = from_number.replace("whatsapp:", "")
     instance_id = NUMBER_MAP.get(to_number, "default")
 
-    set_default_group_if_missing(phone, instance_id)
-
     print(f"📞 From: {from_number} (instance: {instance_id})")
     print(f"📲 Message: {message}")
 
@@ -80,6 +78,22 @@ async def whatsapp_webhook(request: Request):
         command = "/" + message.strip().lower()
     else:
         command = message.strip().lower()
+
+    # --- Step 2: LISTINHA command ---
+    if command == "/listinha":
+        from firebase import user_in_list, create_new_list
+        if user_in_list(phone):
+            send_message(from_number, "⚠️ Você já participa de uma Listinha. Saia dela para criar uma nova.")
+        else:
+            doc_id = create_new_list(phone, instance_id)
+            send_message(from_number, "🎉 Sua nova Listinha foi criada! Agora você é o administrador.")
+        return {"status": "ok"}
+
+    # --- Check if user exists in DB before other commands ---
+    from firebase import user_in_list
+    if not user_in_list(phone):
+        send_message(from_number, "⚠️ Você ainda não participa de nenhuma Listinha. Envie 'listinha' para criar a sua.")
+        return {"status": "ok"}
 
     # MENU:
     MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
@@ -102,7 +116,6 @@ async def whatsapp_webhook(request: Request):
             doc_id = quote(raw_doc_id, safe="")
             send_message(from_number,
                          f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
-
         else:
             text = "🛒 Sua Listinha:\n" + "\n".join(
                 f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
@@ -127,7 +140,7 @@ async def whatsapp_webhook(request: Request):
 
     # ADD ITEM: if original input had no slash
     elif not message.startswith("/"):
-        added = add_item(phone, message)  # pass message as the item
+        added = add_item(phone, message)
         if added:
             print("Adicionado.")
         else:
@@ -135,6 +148,14 @@ async def whatsapp_webhook(request: Request):
 
     else:
         send_message(from_number, "❓ Comando não reconhecido. Envie /m para ver o menu.")
+
+    # ELIMINATE USER (temporary admin command)
+    elif command.startswith("/el "):
+        target_phone = command[4:].strip()
+        from firebase import eliminate_user
+        eliminate_user(target_phone)
+        send_message(from_number, f"🗑️ Usuário {target_phone} removido do banco de dados.")
+        return {"status": "ok"}
 
     return {"status": "ok"}
 

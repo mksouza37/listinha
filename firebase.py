@@ -83,3 +83,45 @@ def delete_item(phone, item_name):
         return False
     ref.set({"itens": new_items})
     return True
+
+def user_in_list(phone):
+    ref = db.collection("users").document(phone)
+    doc = ref.get()
+    return doc.exists  # True if user is already in a list
+
+def create_new_list(phone, instance_id="default"):
+    group_data = {
+        "owner": phone,
+        "list": "default",
+        "instance": instance_id,
+        "role": "admin"
+    }
+    db.collection("users").document(phone).set({"group": group_data})
+
+    doc_id = f"{instance_id}__{phone}__default"
+    list_data = {
+        "owner": phone,
+        "members": [phone],
+        "itens": []
+    }
+    db.collection("listas").document(doc_id).set(list_data)
+
+    print(f"✅ New list created for {phone} in {instance_id}")
+    return doc_id
+
+def eliminate_user(phone):
+    # Remove from users collection
+    db.collection("users").document(phone).delete()
+
+    # Remove from any listas members
+    listas_ref = db.collection("listas").stream()
+    for lista_doc in listas_ref:
+        lista_data = lista_doc.to_dict()
+        if "members" in lista_data and phone in lista_data["members"]:
+            new_members = [m for m in lista_data["members"] if m != phone]
+            db.collection("listas").document(lista_doc.id).update({"members": new_members})
+
+    print(f"🗑️ Eliminated user {phone} from database.")
+
+
+
