@@ -144,64 +144,82 @@ def add_user_to_list(admin_phone, target_phone):
 
 def remove_user_from_list(admin_phone, target_phone):
     admin_ref = db.collection("users").document(admin_phone)
+    if not admin_ref.get().exists:
+        return False
     admin_group = admin_ref.get().to_dict()["group"]
 
+    target_ref = db.collection("users").document(target_phone)
+    if not target_ref.get().exists:
+        return False
+    target_group = target_ref.get().to_dict()["group"]
+
+    # Check same list via users data
+    if (target_group["owner"] != admin_group["owner"] or
+        target_group["list"] != admin_group["list"] or
+        target_group["instance"] != admin_group["instance"]):
+        return False
+
+    # Remove from members array (optional for display)
     doc_id = f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
     list_ref = db.collection("listas").document(doc_id)
     list_data = list_ref.get().to_dict()
-
     members = list_data.get("members", [])
-    if target_phone not in members:
-        return False  # Not a member
+    if target_phone in members:
+        members = [m for m in members if m != target_phone]
+        list_ref.update({"members": members})
 
-    new_members = [m for m in members if m != target_phone]
-    list_ref.update({"members": new_members})
-
+    # Delete target user document
     db.collection("users").document(target_phone).delete()
     return True
 
-
 def remove_self_from_list(user_phone):
     user_ref = db.collection("users").document(user_phone)
+    if not user_ref.get().exists:
+        return False
+
     user_group = user_ref.get().to_dict()["group"]
 
+    # Admins cannot self-remove
+    if user_group["role"] == "admin":
+        return False
+
+    # Remove from members array (optional for display)
     doc_id = f"{user_group['instance']}__{user_group['owner']}__{user_group['list']}"
     list_ref = db.collection("listas").document(doc_id)
     list_data = list_ref.get().to_dict()
-
-    if user_group["role"] == "admin":
-        return False  # Admins cannot self-remove
-
     members = list_data.get("members", [])
-    new_members = [m for m in members if m != user_phone]
-    list_ref.update({"members": new_members})
+    if user_phone in members:
+        members = [m for m in members if m != user_phone]
+        list_ref.update({"members": members})
 
+    # Delete the user document
     db.collection("users").document(user_phone).delete()
     return True
 
 def propose_admin_transfer(admin_phone, target_phone):
     admin_ref = db.collection("users").document(admin_phone)
+    if not admin_ref.get().exists:
+        return False
     admin_group = admin_ref.get().to_dict()["group"]
 
-    doc_id = f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
-    list_data = db.collection("listas").document(doc_id).get().to_dict()
-
-    # Ensure target is a member of same list
-    members = list_data.get("members", [])
-    if target_phone not in members:
-        return False  # Not in list
-
-    # Store pending transfer in target user document
     target_ref = db.collection("users").document(target_phone)
     if not target_ref.get().exists:
         return False
+    target_group = target_ref.get().to_dict()["group"]
 
-    target_data = target_ref.get().to_dict()
-    target_data["pending_admin_transfer"] = {
-        "from": admin_phone,
-        "doc_id": doc_id
-    }
-    target_ref.set(target_data, merge=True)
+    # Check same list via users data
+    if (target_group["owner"] != admin_group["owner"] or
+        target_group["list"] != admin_group["list"] or
+        target_group["instance"] != admin_group["instance"]):
+        return False
+
+    # Store pending transfer
+    target_ref.update({
+        "pending_admin_transfer": {
+            "from": admin_phone,
+            "doc_id": f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
+        }
+    })
     return True
 
 def accept_admin_transfer(user_phone):
