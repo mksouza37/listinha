@@ -150,17 +150,16 @@ def remove_user_from_list(admin_phone, target_phone):
     list_ref = db.collection("listas").document(doc_id)
     list_data = list_ref.get().to_dict()
 
-    if target_phone not in list_data.get("members", []):
+    members = list_data.get("members", [])
+    if target_phone not in members:
         return False  # Not a member
 
-    # Remove from list members
-    list_ref.update({"members": firestore.ArrayUnion([])})
-    new_members = [m for m in list_data["members"] if m != target_phone]
+    new_members = [m for m in members if m != target_phone]
     list_ref.update({"members": new_members})
 
-    # Delete user document
     db.collection("users").document(target_phone).delete()
     return True
+
 
 def remove_self_from_list(user_phone):
     user_ref = db.collection("users").document(user_phone)
@@ -173,7 +172,8 @@ def remove_self_from_list(user_phone):
     if user_group["role"] == "admin":
         return False  # Admins cannot self-remove
 
-    new_members = [m for m in list_data["members"] if m != user_phone]
+    members = list_data.get("members", [])
+    new_members = [m for m in members if m != user_phone]
     list_ref.update({"members": new_members})
 
     db.collection("users").document(user_phone).delete()
