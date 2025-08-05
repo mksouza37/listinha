@@ -74,39 +74,49 @@ async def whatsapp_webhook(request: Request):
     print(f"📞 From: {from_number} (instance: {instance_id})")
     print(f"📲 Message: {message}")
 
-    # 👇 Add slash if missing
-    if not message.startswith("/"):
-        command = "/" + message.strip().lower()
+    # Normalize command format (always with "/")
+    parts = message.strip().split(maxsplit=1)
+    if parts:
+        cmd = "/" + parts[0].lower()
+        arg = parts[1] if len(parts) > 1 else ""
     else:
-        command = message.strip().lower()
+        cmd = "/"
+        arg = ""
 
-    # --- Step 2: LISTINHA command ---
-    if command == "/listinha":
+    # LISTINHA command
+    if cmd == "/listinha":
         from firebase import user_in_list, create_new_list
         if user_in_list(phone):
             send_message(from_number, "⚠️ Você já participa de uma Listinha. Saia dela para criar uma nova.")
         else:
-            doc_id = create_new_list(phone, instance_id)
+            create_new_list(phone, instance_id)
             send_message(from_number, "🎉 Sua nova Listinha foi criada! Agora você é o administrador.")
         return {"status": "ok"}
 
-    # --- Check if user exists in DB before other commands ---
+    # Check if user exists before other commands
     from firebase import user_in_list
     if not user_in_list(phone):
         send_message(from_number, "⚠️ Você ainda não participa de nenhuma Listinha. Envie 'listinha' para criar a sua.")
         return {"status": "ok"}
 
-    # ADD USER: i <phone>
-    elif command.startswith("/i "):
-        target_phone = command[3:].strip()
-        # Ensure it starts with "+"
+    # Add item to list (i <text>)
+    if cmd == "/i" and arg:
+        added = add_item(phone, arg)
+        if added:
+            send_message(from_number, f"✅ Item adicionado: {arg}")
+        else:
+            send_message(from_number, f"⚠️ O item '{arg}' já está na listinha.")
+        return {"status": "ok"}
+
+    # Add new user (u <phone>)
+    if cmd == "/u" and arg:
+        target_phone = arg.strip()
         if not target_phone.startswith("+"):
             target_phone = "+" + target_phone
-
+        from firebase import is_admin, add_user_to_list
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
             return {"status": "ok"}
-
         success, status = add_user_to_list(phone, target_phone)
         if success:
             send_message(from_number, f"📢 Usuário {target_phone} adicionado à sua Listinha.")
@@ -114,20 +124,22 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"⚠️ O número {target_phone} já participa de outra Listinha.")
         return {"status": "ok"}
 
-    # MENU:
+    # Menu
     MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
-    if command in MENU_ALIASES:
+    if cmd in MENU_ALIASES:
         menu = (
             "📝 *Listinha Menu*:\n\n"
-            "📥 Adicionar item: digite o nome diretamente\n"
+            "📥 Adicionar item: i <item>\n"
+            "👤 Adicionar usuário: u <telefone>\n"
             "📋 Ver lista: v\n"
             "🧹 Limpar lista: l\n"
-            "❌ Apagar item: a nome_do_item\n"
+            "❌ Apagar item: a <item>\n"
         )
         send_message(from_number, menu)
+        return {"status": "ok"}
 
-    # VIEW: /v
-    elif command == "/v":
+    # View list
+    if cmd == "/v":
         items = get_items(phone)
         if len(items) > 20:
             group = get_user_group(phone)
@@ -136,46 +148,34 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number,
                          f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
         else:
-            text = "🛒 Sua Listinha:\n" + "\n".join(
-                f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
+            text = "🛒 Sua Listinha:\n" + "\n".join(f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
             send_message(from_number, text)
-
-    # DELETE ALL: /l
-    elif command == "/l":
-        clear_items(phone)
-        send_message(from_number, "✅ Sua listinha foi limpa!")
-
-    # DELETE ITEM: /a arroz
-    elif command.startswith("/a "):
-        item = command[3:].strip()
-        if item:
-            deleted = delete_item(phone, item)
-            if deleted:
-                send_message(from_number, f"❌ Item removido: *{item}*")
-            else:
-                send_message(from_number, f"⚠️ Item não encontrado: *{item}*")
-        else:
-            send_message(from_number, "⚠️ Especifique o item: `/d nome_do_item`")
-
-    # ADD ITEM: if original input had no slash
-    elif not message.startswith("/"):
-        added = add_item(phone, message)
-        if added:
-            print("Adicionado.")
-        else:
-            send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
-
-    # ELIMINATE USER (temporary admin command)
-    elif command.startswith("/el "):
-        target_phone = command[4:].strip()
-        from firebase import eliminate_user
-        eliminate_user(target_phone)
-        send_message(from_number, f"🗑️ Usuário {target_phone} removido do banco de dados.")
         return {"status": "ok"}
 
-    else:
-        send_message(from_number, "❓ Comando não reconhecido. Envie /m para ver o menu.")
+    # Clear list
+    if cmd == "/l":
+        clear_items(phone)
+        send_message(from_number, "✅ Sua listinha foi limpa!")
+        return {"status": "ok"}
 
+    # Delete item
+    if cmd == "/a" and arg:
+        deleted = delete_item(phone, arg)
+        if deleted:
+            send_message(from_number, f"❌ Item removido: {arg}")
+        else:
+            send_message(from_number, f"⚠️ Item não encontrado: {arg}")
+        return {"status": "ok"}
+
+    # Eliminate user (temporary)
+    if cmd == "/el" and arg:
+        from firebase import eliminate_user
+        eliminate_user(arg)
+        send_message(from_number, f"🗑️ Usuário {arg} removido do banco de dados.")
+        return {"status": "ok"}
+
+    # If no valid command matched
+    send_message(from_number, "⚠️ Comando inválido. Envie /m para ver o menu.")
     return {"status": "ok"}
 
 def send_message(to, body):
