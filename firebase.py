@@ -22,7 +22,7 @@ def set_default_group_if_missing(phone, instance_id="default"):
     if not ref.get().exists:
         ref.set({"group": {"owner": phone, "list": "default", "instance": instance_id}})
 
-def add_item(phone):
+def add_item(phone, item):
     group = get_user_group(phone)
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     ref = db.collection("listas").document(doc_id)
@@ -35,6 +35,7 @@ def add_item(phone):
     items.append(item)
     ref.set({"itens": items})
     return True
+
 
 def get_items(phone):
     group = get_user_group(phone)

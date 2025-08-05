@@ -127,7 +127,7 @@ async def whatsapp_webhook(request: Request):
 
     # ADD ITEM: if original input had no slash
     elif not message.startswith("/"):
-        added = add_item(phone)
+        added = add_item(phone, message)  # pass message as the item
         if added:
             print("Adicionado.")
         else:
