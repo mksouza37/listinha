@@ -146,9 +146,6 @@ async def whatsapp_webhook(request: Request):
         else:
             send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
 
-    else:
-        send_message(from_number, "❓ Comando não reconhecido. Envie /m para ver o menu.")
-
     # ELIMINATE USER (temporary admin command)
     elif command.startswith("/el "):
         target_phone = command[4:].strip()
@@ -156,6 +153,9 @@ async def whatsapp_webhook(request: Request):
         eliminate_user(target_phone)
         send_message(from_number, f"🗑️ Usuário {target_phone} removido do banco de dados.")
         return {"status": "ok"}
+
+    else:
+        send_message(from_number, "❓ Comando não reconhecido. Envie /m para ver o menu.")
 
     return {"status": "ok"}
 
