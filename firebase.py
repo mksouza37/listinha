@@ -10,24 +10,21 @@ cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-
 def get_user_group(phone):
     ref = db.collection("users").document(phone)
     doc = ref.get()
     if doc.exists:
         return doc.to_dict().get("group")
-    return {"owner": phone, "list": "default"}
+    return {"owner": phone, "list": "default", "instance": "default"}
 
-
-def set_default_group_if_missing(phone):
+def set_default_group_if_missing(phone, instance_id="default"):
     ref = db.collection("users").document(phone)
     if not ref.get().exists:
-        ref.set({"group": {"owner": phone, "list": "default"}})
+        ref.set({"group": {"owner": phone, "list": "default", "instance": instance_id}})
 
-
-def add_item(phone, item):
+def add_item(phone):
     group = get_user_group(phone)
-    doc_id = f"{group['owner']}__{group['list']}"
+    doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
@@ -39,24 +36,21 @@ def add_item(phone, item):
     ref.set({"itens": items})
     return True
 
-
 def get_items(phone):
     group = get_user_group(phone)
-    doc_id = f"{group['owner']}__{group['list']}"
+    doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     return doc.to_dict()["itens"] if doc.exists else []
 
-
 def clear_items(phone):
     group = get_user_group(phone)
-    doc_id = f"{group['owner']}__{group['list']}"
+    doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     db.collection("listas").document(doc_id).set({"itens": []})
-
 
 def delete_item(phone, item_name):
     group = get_user_group(phone)
-    doc_id = f"{group['owner']}__{group['list']}"
+    doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     if not doc.exists:

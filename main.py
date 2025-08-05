@@ -13,6 +13,12 @@ from urllib.parse import unquote_plus
 
 app = FastAPI()
 
+# Map WhatsApp service numbers to instance IDs
+NUMBER_MAP = {
+    "whatsapp:+551199999999": "instance_1",  # Replace with your real numbers
+    "whatsapp:+551188888888": "instance_2"
+}
+
 # Twilio setup
 twilio_client = Client(
     os.getenv("TWILIO_ACCOUNT_SID"),
@@ -46,7 +52,7 @@ def view_list(g: str):
 
     data = doc.to_dict()
     print(f"📦 Found doc with {len(data.get('itens', []))} items")
-    content=render_list_page(g, data.get("itens", []))
+    content = render_list_page(g, data.get("itens", []))
 
     pdf = weasyprint.HTML(string=content).write_pdf()
 
@@ -54,43 +60,20 @@ def view_list(g: str):
         "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
     })
 
-@app.get("/view/pdfA")
-def view_pdf(g: str):
-    print(f"📥 Raw g: {repr(g)}")
-    doc_id = unquote_plus(g)
-    print("📄 doc_id final:", repr(doc_id))
-    print(f"📄 Generating PDF for doc_id: '{doc_id}'")
-
-    ref = firestore.client().collection("listas").document(doc_id)
-    doc = ref.get()
-
-    if not doc.exists:
-        print(f"❌ Document not found: {doc_id}")
-        return Response(content="Documento não encontrado.", media_type="text/plain")
-
-    data = doc.to_dict()
-    items = data.get("itens", [])
-    print(f"📄 PDF includes {len(items)} items")
-
-    html = render_list_page(g, items)  # g é o ID codificado com %2B
-
-    pdf = weasyprint.HTML(string=html).write_pdf()
-
-    return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{doc_id}.pdf"
-    })
-
-
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
     form = await request.form()
     from_number = form.get("From")  # "whatsapp:+551199999999"
+    to_number = form.get("To")      # "whatsapp:+5511XXXXXXX" (our service number)
     message = form.get("Body").strip()
-    phone = from_number.replace("whatsapp:", "")
-    set_default_group_if_missing(phone)
 
-    print("📞 From:", from_number)
-    print("📲 Message:", message)
+    phone = from_number.replace("whatsapp:", "")
+    instance_id = NUMBER_MAP.get(to_number, "default")
+
+    set_default_group_if_missing(phone, instance_id)
+
+    print(f"📞 From: {from_number} (instance: {instance_id})")
+    print(f"📲 Message: {message}")
 
     # 👇 Add slash if missing
     if not message.startswith("/"):
@@ -115,7 +98,7 @@ async def whatsapp_webhook(request: Request):
         items = get_items(phone)
         if len(items) > 20:
             group = get_user_group(phone)
-            raw_doc_id = f"{group['owner']}__{group['list']}"
+            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
             doc_id = quote(raw_doc_id, safe="")
             send_message(from_number,
                          f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
@@ -144,9 +127,8 @@ async def whatsapp_webhook(request: Request):
 
     # ADD ITEM: if original input had no slash
     elif not message.startswith("/"):
-        added = add_item(phone, message)
+        added = add_item(phone)
         if added:
-            #send_message(from_number, f"✅ Adicionado: *{message}*")
             print("Adicionado.")
         else:
             send_message(from_number, f"⚠️ O item *{message}* já está na listinha.")
@@ -171,7 +153,6 @@ def send_message(to, body):
         print(str(e))
 
 def get_items_from_doc_id(doc_id):
-
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
     return doc.to_dict()["itens"] if doc.exists else []
@@ -181,7 +162,5 @@ def render_list_page(doc_id, items):
         html = f.read()
     template = Template(html)
 
-    doc_id_encoded = quote(doc_id, safe="")  # codifica para usar na URL
+    doc_id_encoded = quote(doc_id, safe="")
     return template.render(doc_id=doc_id_encoded, items=items, count=len(items))
-
-
