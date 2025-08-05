@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Request
-from firebase import add_item, get_items, delete_item, clear_items
-from firebase import set_default_group_if_missing
-from firebase import get_user_group
-from firebase import is_admin, add_user_to_list
+from firebase import (
+    add_item, get_items, delete_item, clear_items,
+    get_user_group,
+    is_admin, add_user_to_list,
+    remove_user_from_list, remove_self_from_list
+)
 from firebase_admin import firestore
 from twilio.rest import Client
 from fastapi.responses import HTMLResponse, Response
@@ -103,7 +105,8 @@ async def whatsapp_webhook(request: Request):
     if cmd == "/i" and arg:
         added = add_item(phone, arg)
         if added:
-            send_message(from_number, f"✅ Item adicionado: {arg}")
+            #send_message(from_number, f"✅ Item adicionado: {arg}")
+            print(f"✅ Item adicionado: {arg}")
         else:
             send_message(from_number, f"⚠️ O item '{arg}' já está na listinha.")
         return {"status": "ok"}
@@ -122,6 +125,30 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"📢 Usuário {target_phone} adicionado à sua Listinha.")
         elif status == "already_in_list":
             send_message(from_number, f"⚠️ O número {target_phone} já participa de outra Listinha.")
+        return {"status": "ok"}
+
+    # Remove user (admin): e <phone>
+    if cmd == "/e" and arg:
+        target_phone = arg.strip()
+        if not target_phone.startswith("+"):
+            target_phone = "+" + target_phone
+        from firebase import is_admin, remove_user_from_list
+        if not is_admin(phone):
+            send_message(from_number, "❌ Apenas o administrador pode remover usuários.")
+            return {"status": "ok"}
+        if remove_user_from_list(phone, target_phone):
+            send_message(from_number, f"🗑️ Usuário {target_phone} removido da sua Listinha.")
+        else:
+            send_message(from_number, f"⚠️ O número {target_phone} não é membro da sua Listinha.")
+        return {"status": "ok"}
+
+    # Self-remove: s
+    if cmd == "/s":
+        from firebase import remove_self_from_list
+        if remove_self_from_list(phone):
+            send_message(from_number, "👋 Você saiu da Listinha.")
+        else:
+            send_message(from_number, "⚠️ Administradores não podem sair — use a transferência de admin.")
         return {"status": "ok"}
 
     # Menu
