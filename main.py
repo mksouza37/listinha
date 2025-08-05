@@ -187,12 +187,33 @@ async def whatsapp_webhook(request: Request):
         menu = (
             "📝 *Listinha Menu*:\n\n"
             "📥 Adicionar item: i <item>\n"
-            "👤 Adicionar usuário: u <telefone>\n"
+            "👤 Adicionar usuário (apenas admin): u <telefone>\n"
+            "➖ Remover usuário (apenas admin): e <telefone>\n"
+            "🔄 Transferir papel de admin (apenas admin): t <telefone>\n"
+            "✅ Aceitar papel de admin: ac\n"
             "📋 Ver lista: v\n"
-            "🧹 Limpar lista: l\n"
+            "🧹 Limpar lista inteira (apenas admin): l\n"
             "❌ Apagar item: a <item>\n"
+            "👥 Consultar pessoas na lista: p\n"
+            "🚪 Sair da lista: s\n"
         )
         send_message(from_number, menu)
+        return {"status": "ok"}
+
+    # Consultar pessoas na lista: p (all)
+    if cmd == "/p":
+        from firebase import get_user_group
+        group = get_user_group(phone)
+        doc_id = f"{group['instance']}__{group['owner']}__{group['list']}"
+        list_ref = firestore.client().collection("listas").document(doc_id)
+        list_data = list_ref.get().to_dict()
+
+        members = list_data.get("members", [])
+        members_display = "\n".join(members) if members else "(nenhum membro listado)"
+        owner_display = group['owner'] + " (admin)"
+
+        text = f"👥 *Pessoas na Listinha:*\n\n{owner_display}\n{members_display}"
+        send_message(from_number, text)
         return {"status": "ok"}
 
     # View list
@@ -209,8 +230,13 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, text)
         return {"status": "ok"}
 
-    # Clear list
+    # Clear all items: l (admin only)
     if cmd == "/l":
+        from firebase import is_admin
+        if not is_admin(phone):
+            send_message(from_number, "❌ Apenas o administrador pode limpar a listinha inteira.")
+            return {"status": "ok"}
+
         clear_items(phone)
         send_message(from_number, "✅ Sua listinha foi limpa!")
         return {"status": "ok"}
