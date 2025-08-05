@@ -178,3 +178,55 @@ def remove_self_from_list(user_phone):
 
     db.collection("users").document(user_phone).delete()
     return True
+
+def propose_admin_transfer(admin_phone, target_phone):
+    admin_ref = db.collection("users").document(admin_phone)
+    admin_group = admin_ref.get().to_dict()["group"]
+
+    doc_id = f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
+    list_data = db.collection("listas").document(doc_id).get().to_dict()
+
+    # Ensure target is a member of same list
+    members = list_data.get("members", [])
+    if target_phone not in members:
+        return False  # Not in list
+
+    # Store pending transfer in target user document
+    target_ref = db.collection("users").document(target_phone)
+    if not target_ref.get().exists:
+        return False
+
+    target_data = target_ref.get().to_dict()
+    target_data["pending_admin_transfer"] = {
+        "from": admin_phone,
+        "doc_id": doc_id
+    }
+    target_ref.set(target_data, merge=True)
+    return True
+
+def accept_admin_transfer(user_phone):
+    user_ref = db.collection("users").document(user_phone)
+    user_data = user_ref.get().to_dict()
+
+    pending = user_data.get("pending_admin_transfer")
+    if not pending:
+        return False
+
+    from_phone = pending["from"]
+    doc_id = pending["doc_id"]
+
+    # Update target to admin
+    user_group = user_data["group"]
+    user_group["role"] = "admin"
+    db.collection("users").document(user_phone).set({"group": user_group}, merge=True)
+
+    # Update old admin to user
+    from_ref = db.collection("users").document(from_phone)
+    from_group = from_ref.get().to_dict()["group"]
+    from_group["role"] = "user"
+    db.collection("users").document(from_phone).set({"group": from_group}, merge=True)
+
+    # Remove pending transfer
+    db.collection("users").document(user_phone).update({"pending_admin_transfer": firestore.DELETE_FIELD})
+
+    return {"from": from_phone}

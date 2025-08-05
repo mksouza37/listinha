@@ -151,6 +151,36 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, "⚠️ Administradores não podem sair — use a transferência de admin.")
         return {"status": "ok"}
 
+    # Transfer admin role: t <phone>
+    if cmd == "/t" and arg:
+        target_phone = arg.strip()
+        if not target_phone.startswith("+"):
+            target_phone = "+" + target_phone
+        from firebase import is_admin, propose_admin_transfer
+        if not is_admin(phone):
+            send_message(from_number, "❌ Apenas o administrador pode transferir o papel de admin.")
+            return {"status": "ok"}
+        if propose_admin_transfer(phone, target_phone):
+            send_message(from_number, f"📢 Proposta de transferência enviada para {target_phone}.")
+            send_message(f"whatsapp:{target_phone}",
+                         "📢 Você foi indicado para se tornar administrador da Listinha. Envie 'ac' para aceitar.")
+        else:
+            send_message(from_number, f"⚠️ O número {target_phone} não é membro da sua Listinha.")
+        return {"status": "ok"}
+
+    # Accept admin role: ac
+    if cmd == "/ac":
+        from firebase import accept_admin_transfer
+        result = accept_admin_transfer(phone)
+        if result:
+            from_phone = result["from"]  # now returns a dict instead of just True
+            send_message(from_number, "✅ Agora você é o administrador da Listinha.")
+            send_message(f"whatsapp:{from_phone}",
+                         "📢 Sua função mudou para *usuário*. Se quiser sair da Listinha, use o comando 's'.")
+        else:
+            send_message(from_number, "⚠️ Não há nenhuma transferência de admin pendente para você.")
+        return {"status": "ok"}
+
     # Menu
     MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
     if cmd in MENU_ALIASES:
