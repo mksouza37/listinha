@@ -113,15 +113,18 @@ def eliminate_user(phone):
     # Remove from users collection
     db.collection("users").document(phone).delete()
 
-    # Remove from any listas members
+    # Remove from any listas members and delete if they are the owner
     listas_ref = db.collection("listas").stream()
     for lista_doc in listas_ref:
         lista_data = lista_doc.to_dict()
-        if "members" in lista_data and phone in lista_data["members"]:
+        if lista_data.get("owner") == phone:
+            db.collection("listas").document(lista_doc.id).delete()
+        elif "members" in lista_data and phone in lista_data["members"]:
             new_members = [m for m in lista_data["members"] if m != phone]
             db.collection("listas").document(lista_doc.id).update({"members": new_members})
 
     print(f"🗑️ Eliminated user {phone} from database.")
+
 
 
 
