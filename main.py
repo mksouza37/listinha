@@ -95,6 +95,22 @@ async def whatsapp_webhook(request: Request):
         send_message(from_number, "⚠️ Você ainda não participa de nenhuma Listinha. Envie 'listinha' para criar a sua.")
         return {"status": "ok"}
 
+    # ADD USER: i <phone>
+    elif command.startswith("/i "):
+        target_phone = command[3:].strip()
+        from firebase import is_admin, add_user_to_list
+
+        if not is_admin(phone):
+            send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
+            return {"status": "ok"}
+
+        success, status = add_user_to_list(phone, target_phone)
+        if success:
+            send_message(from_number, f"📢 Usuário {target_phone} adicionado à sua Listinha.")
+        elif status == "already_in_list":
+            send_message(from_number, f"⚠️ O número {target_phone} já participa de outra Listinha.")
+        return {"status": "ok"}
+
     # MENU:
     MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
     if command in MENU_ALIASES:

@@ -109,22 +109,35 @@ def create_new_list(phone, instance_id="default"):
     print(f"✅ New list created for {phone} in {instance_id}")
     return doc_id
 
-def eliminate_user(phone):
-    # Remove from users collection
-    db.collection("users").document(phone).delete()
+def is_admin(phone):
+    ref = db.collection("users").document(phone)
+    doc = ref.get()
+    if not doc.exists:
+        return False
+    group = doc.to_dict().get("group", {})
+    return group.get("role") == "admin"
 
-    # Remove from any listas members and delete if they are the owner
-    listas_ref = db.collection("listas").stream()
-    for lista_doc in listas_ref:
-        lista_data = lista_doc.to_dict()
-        if lista_data.get("owner") == phone:
-            db.collection("listas").document(lista_doc.id).delete()
-        elif "members" in lista_data and phone in lista_data["members"]:
-            new_members = [m for m in lista_data["members"] if m != phone]
-            db.collection("listas").document(lista_doc.id).update({"members": new_members})
+def add_user_to_list(admin_phone, target_phone):
+    # Check if target is already in a list
+    if user_in_list(target_phone):
+        return False, "already_in_list"
 
-    print(f"🗑️ Eliminated user {phone} from database.")
+    # Get admin group
+    admin_ref = db.collection("users").document(admin_phone)
+    admin_group = admin_ref.get().to_dict()["group"]
 
+    # Create target user document
+    target_group = {
+        "owner": admin_group["owner"],  # admin's phone
+        "list": admin_group["list"],
+        "instance": admin_group["instance"],
+        "role": "user"
+    }
+    db.collection("users").document(target_phone).set({"group": target_group})
 
+    # Add target to members in list
+    doc_id = f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
+    list_ref = db.collection("listas").document(doc_id)
+    list_ref.update({"members": firestore.ArrayUnion([target_phone])})
 
-
+    return True, "added"
