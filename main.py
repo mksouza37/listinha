@@ -186,14 +186,16 @@ async def whatsapp_webhook(request: Request):
     if cmd in MENU_ALIASES:
         menu = (
             "📝 *Listinha Menu*:\n\n"
-            "📥 Adicionar item: i <item>\n"
-            "👤 Adicionar usuário (apenas admin): u <telefone>\n"
-            "➖ Remover usuário (apenas admin): e <telefone>\n"
-            "🔄 Transferir papel de admin (apenas admin): t <telefone>\n"
-            "✅ Aceitar papel de admin: ac\n"
-            "📋 Ver lista: v\n"
-            "🧹 Limpar lista inteira (apenas admin): l\n"
+            
+            "📥 Adicionar item: i <item>\n"            
             "❌ Apagar item: a <item>\n"
+            "📋 Ver lista: v\n\n"
+            
+            "🧹 Limpar lista inteira: l\n"
+            "👤 Adicionar usuário: u <telefone>\n"
+            "➖ Remover usuário: e <telefone>\n"
+            "🔄 Transferir papel de admin: t <telefone>\n"
+            "✅ Aceitar papel de admin: ac\n"
             "👥 Consultar pessoas na lista: p\n"
             "🚪 Sair da lista: s\n"
         )
@@ -204,15 +206,24 @@ async def whatsapp_webhook(request: Request):
     if cmd == "/p":
         from firebase import get_user_group
         group = get_user_group(phone)
-        doc_id = f"{group['instance']}__{group['owner']}__{group['list']}"
-        list_ref = firestore.client().collection("listas").document(doc_id)
-        list_data = list_ref.get().to_dict()
 
-        members = list_data.get("members", [])
-        members_display = "\n".join(members) if members else "(nenhum membro listado)"
-        owner_display = group['owner'] + " (admin)"
+        # Query users collection for same list/owner/instance
+        users_ref = firestore.client().collection("users")
+        same_list_users = users_ref.where("group.owner", "==", group["owner"]) \
+            .where("group.list", "==", group["list"]) \
+            .where("group.instance", "==", group["instance"]) \
+            .stream()
 
-        text = f"👥 *Pessoas na Listinha:*\n\n{owner_display}\n{members_display}"
+        members_display = []
+        for doc in same_list_users:
+            data = doc.to_dict()
+            role = data["group"].get("role", "user")
+            members_display.append(f"{doc.id} ({role})")
+
+        # Sort so admin appears first
+        members_display.sort(key=lambda x: "(admin)" not in x)
+
+        text = "👥 *Pessoas na Listinha:*\n\n" + "\n".join(members_display)
         send_message(from_number, text)
         return {"status": "ok"}
 
