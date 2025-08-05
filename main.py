@@ -182,24 +182,46 @@ async def whatsapp_webhook(request: Request):
         return {"status": "ok"}
 
     # Menu
-    MENU_ALIASES = {"/m", "/menu", "/instruções", "/ajuda", "/help", "/opções"}
+    # Menu
+    MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções"}  # removed ajuda/help
     if cmd in MENU_ALIASES:
         menu = (
             "📝 *Listinha Menu*:\n\n"
-            
-            "📥 Adicionar item: i <item>\n"            
+
+            "📥 Adicionar item: i <item>\n"
             "❌ Apagar item: a <item>\n"
             "📋 Ver lista: v\n\n"
-            
+
             "🧹 Limpar lista inteira: l\n"
             "👤 Adicionar usuário: u <telefone>\n"
             "➖ Remover usuário: e <telefone>\n"
             "🔄 Transferir papel de admin: t <telefone>\n"
             "✅ Aceitar papel de admin: ac\n"
             "👥 Consultar pessoas na lista: p\n"
-            "🚪 Sair da lista: s\n"
+            "🚪 Sair da lista: s\n\n"
+
+            "ℹ️ Ajuda: h / ajuda / help\n"
         )
         send_message(from_number, menu)
+        return {"status": "ok"}
+
+    # Help text
+    HELP_ALIASES = {"/h", "/ajuda", "/help"}
+    if cmd in HELP_ALIASES:
+        help_text = (
+            "📖 *Como funciona a Listinha*\n"
+            "A Listinha é uma lista de compras compartilhada no WhatsApp, "
+            "onde todos os membros podem ver e adicionar itens em tempo real.\n\n"
+
+            "👥 *Funcionamento básico:*\n"
+            "1️⃣ O administrador cria a Listinha e adiciona os membros.\n"
+            "2️⃣ Qualquer membro pode incluir ou remover itens.\n"
+            "3️⃣ O administrador pode limpar a lista inteira ou remover membros.\n"
+            "4️⃣ A lista é atualizada para todos instantaneamente.\n\n"
+
+            "💡 *Dica:* Use /m para ver todos os comandos disponíveis."
+        )
+        send_message(from_number, help_text)
         return {"status": "ok"}
 
     # Consultar pessoas na lista: p (all)
