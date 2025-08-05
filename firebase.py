@@ -19,7 +19,7 @@ def get_user_group(phone):
 
 def set_default_group_if_missing(phone, instance_id="default"):
     ref = db.collection("users").document(phone)
-    if not ref.get().exists():
+    if not ref.get().exists:  # <-- FIX: removed ()
         # Create user as admin of a new list
         group_data = {
             "owner": phone,
@@ -38,7 +38,7 @@ def set_default_group_if_missing(phone, instance_id="default"):
         }
         db.collection("listas").document(doc_id).set(list_data)
 
-        # Debug prints to confirm creation in logs
+        # Debug prints
         print(f"✅ Created new admin list: {doc_id}")
         print(f"📄 User doc: {group_data}")
         print(f"📄 List doc: {list_data}")
