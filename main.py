@@ -98,7 +98,9 @@ async def whatsapp_webhook(request: Request):
     # ADD USER: i <phone>
     elif command.startswith("/i "):
         target_phone = command[3:].strip()
-        from firebase import is_admin, add_user_to_list
+        # Ensure it starts with "+"
+        if not target_phone.startswith("+"):
+            target_phone = "+" + target_phone
 
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
