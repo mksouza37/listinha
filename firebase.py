@@ -50,6 +50,8 @@ def add_item(phone, item):
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
 
+    item = item.strip().capitalize()  # Capitalize first letter
+
     if any(i.lower() == item.lower() for i in items):
         return False  # Duplicate
 
@@ -57,13 +59,13 @@ def add_item(phone, item):
     ref.set({"itens": items})
     return True
 
-
 def get_items(phone):
     group = get_user_group(phone)
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
-    return doc.to_dict()["itens"] if doc.exists else []
+    items = doc.to_dict()["itens"] if doc.exists else []
+    return sorted(items, key=str.lower)  # Alphabetical
 
 def clear_items(phone):
     group = get_user_group(phone)

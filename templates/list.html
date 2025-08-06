@@ -41,7 +41,7 @@
   </style>
 </head>
 <body>
-  <h1>🛒 Sua Listinha ({{ count }} itens)</h1>
+  <h1>📝 {{ title }}  ({{ count }} itens)</h1>
   <ol>
     {% for item in items %}
     <li>{{ item.lstrip('.• ').strip() }}</li>

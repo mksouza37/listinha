@@ -54,8 +54,11 @@ def view_list(g: str):
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
-    print(f"📦 Found doc with {len(data.get('itens', []))} items")
-    content = render_list_page(g, data.get("itens", []))
+    title = data.get("title", "Sua Listinha")
+    items = sorted(data.get("itens", []), key=str.lower)  # ensure alphabetical
+
+    print(f"📦 Found doc with {len(items)} items")
+    content = render_list_page(g, items, title)
 
     pdf = weasyprint.HTML(string=content).write_pdf()
 
@@ -168,8 +171,8 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"⚠️ O número {target_phone} não é membro da sua Listinha.")
         return {"status": "ok"}
 
-    # Accept admin role: ac
-    if cmd == "/ac":
+    # Accept admin role: o
+    if cmd == "/o":
         from firebase import accept_admin_transfer
         result = accept_admin_transfer(phone)
         if result:
@@ -181,7 +184,20 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, "⚠️ Não há nenhuma transferência de admin pendente para você.")
         return {"status": "ok"}
 
-    # Menu
+    # Admin can define custom list title: b <title>
+    if cmd == "/b" and arg:
+        from firebase import is_admin
+        if not is_admin(phone):
+            send_message(from_number, "❌ Apenas o administrador pode modificar o título.")
+            return {"status": "ok"}
+
+        group = get_user_group(phone)
+        doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+        ref = firestore.client().collection("listas").document(doc_id)
+        ref.update({"title": arg.strip().capitalize()})
+        send_message(from_number, f"🏷️ Título atualizado para: *{arg.strip().capitalize()}*")
+        return {"status": "ok"}
+
     # Menu
     MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções"}  # removed ajuda/help
     if cmd in MENU_ALIASES:
@@ -196,7 +212,7 @@ async def whatsapp_webhook(request: Request):
             "👤 Adicionar usuário: u <telefone>\n"
             "➖ Remover usuário: e <telefone>\n"
             "🔄 Transferir papel de admin: t <telefone>\n"
-            "✅ Aceitar papel de admin: ac\n"
+            "✅ Aceitar papel de admin: o\n"
             "👥 Consultar pessoas na lista: p\n"
             "🚪 Sair da lista: s\n\n"
 
@@ -251,16 +267,27 @@ async def whatsapp_webhook(request: Request):
 
     # View list
     if cmd == "/v":
-        items = get_items(phone)
+        items = get_items(phone)  # already sorted + capitalized in firebase.py
+
+        group = get_user_group(phone)
+        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+        doc_id = quote(raw_doc_id, safe="")
+
+        # Get title from list document
+        ref = firestore.client().collection("listas").document(raw_doc_id)
+        doc = ref.get()
+        title = doc.to_dict().get("title", "Sua Listinha") if doc.exists else "Sua Listinha"
+
         if len(items) > 20:
-            group = get_user_group(phone)
-            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-            doc_id = quote(raw_doc_id, safe="")
             send_message(from_number,
-                         f"📄 Sua listinha tem {len(items)} itens! Veja aqui: https://listinha-t5ga.onrender.com/view?g={doc_id}")
+                         f"📄 *{title}* tem {len(items)} itens! Veja aqui:\nhttps://listinha-t5ga.onrender.com/view?g={doc_id}")
         else:
-            text = "🛒 Sua Listinha:\n" + "\n".join(f"• {item}" for item in items) if items else "🗒️ Sua listinha está vazia."
+            if items:
+                text = f"📝 *{title}:*\n" + "\n".join(f"• {item}" for item in items)
+            else:
+                text = f"🗒️ *{title}* está vazia."
             send_message(from_number, text)
+
         return {"status": "ok"}
 
     # Clear all items: l (admin only)
@@ -311,12 +338,14 @@ def send_message(to, body):
 def get_items_from_doc_id(doc_id):
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
-    return doc.to_dict()["itens"] if doc.exists else []
+    items = doc.to_dict()["itens"] if doc.exists else []
+    return sorted(items, key=str.lower)
 
-def render_list_page(doc_id, items):
+def render_list_page(doc_id, items, title="Sua Listinha"):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
     template = Template(html)
 
     doc_id_encoded = quote(doc_id, safe="")
-    return template.render(doc_id=doc_id_encoded, items=items, count=len(items))
+    return template.render(doc_id=doc_id_encoded, items=items, count=len(items), title=title)
+
