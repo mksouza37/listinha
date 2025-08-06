@@ -52,13 +52,14 @@ def add_item(phone, item):
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
 
-    item = item.strip().capitalize()  # Capitalize first letter
+    item = item.strip().title()
+    print(f"📥 Trying to insert item: {item}")
 
     if any(i.lower() == item.lower() for i in items):
         return False  # Duplicate
 
     items.append(item)
-    ref.set({"itens": items})
+    ref.set({"itens": items}, merge=True)
     return True
 
 def get_items(phone):
