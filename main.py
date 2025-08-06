@@ -113,6 +113,15 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"⚠️ O item '{arg}' já está na listinha.")
         return {"status": "ok"}
 
+    # Delete item: a <item>
+    if cmd == "/a" and arg:
+        deleted = delete_item(phone, arg)
+        if deleted:
+            send_message(from_number, f"❌ Item removido: {arg}")
+        else:
+            send_message(from_number, f"⚠️ Item não encontrado: {arg}")
+        return {"status": "ok"}
+
     # Add new user (u <phone>)
     if cmd == "/u" and arg:
         target_phone = arg.strip()
@@ -200,8 +209,9 @@ async def whatsapp_webhook(request: Request):
             "📥 Adicionar item: i <item>\n"
             "❌ Apagar item: a <item>\n"
             "📋 Ver lista: v\n\n"
-
+            
             "🧹 Limpar lista inteira: l\n"
+            "🏷️ Alterar título da lista: b <título>\n"
             "👤 Adicionar usuário: u <telefone>\n"
             "➖ Remover usuário: e <telefone>\n"
             "🔄 Transferir papel de admin: t <telefone>\n"
