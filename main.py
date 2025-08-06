@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request
 from firebase import (
     add_item, get_items, delete_item, clear_items,
-    get_user_group,
-    is_admin, add_user_to_list,
+    get_user_group, create_new_list, user_in_list,
+    is_admin, add_user_to_list, propose_admin_transfer, accept_admin_transfer,
     remove_user_from_list, remove_self_from_list
 )
 from firebase_admin import firestore
@@ -90,7 +90,6 @@ async def whatsapp_webhook(request: Request):
 
     # LISTINHA command
     if cmd == "/listinha":
-        from firebase import user_in_list, create_new_list
         if user_in_list(phone):
             send_message(from_number, "⚠️ Você já participa de uma Listinha. Saia dela para criar uma nova.")
         else:
@@ -99,7 +98,6 @@ async def whatsapp_webhook(request: Request):
         return {"status": "ok"}
 
     # Check if user exists before other commands
-    from firebase import user_in_list
     if not user_in_list(phone):
         send_message(from_number, "⚠️ Você ainda não participa de nenhuma Listinha. Envie 'listinha' para criar a sua.")
         return {"status": "ok"}
@@ -119,7 +117,6 @@ async def whatsapp_webhook(request: Request):
         target_phone = arg.strip()
         if not target_phone.startswith("+"):
             target_phone = "+" + target_phone
-        from firebase import is_admin, add_user_to_list
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
             return {"status": "ok"}
@@ -135,7 +132,6 @@ async def whatsapp_webhook(request: Request):
         target_phone = arg.strip()
         if not target_phone.startswith("+"):
             target_phone = "+" + target_phone
-        from firebase import is_admin, remove_user_from_list
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode remover usuários.")
             return {"status": "ok"}
@@ -147,7 +143,6 @@ async def whatsapp_webhook(request: Request):
 
     # Self-remove: s
     if cmd == "/s":
-        from firebase import remove_self_from_list
         if remove_self_from_list(phone):
             send_message(from_number, "👋 Você saiu da Listinha.")
         else:
@@ -159,7 +154,6 @@ async def whatsapp_webhook(request: Request):
         target_phone = arg.strip()
         if not target_phone.startswith("+"):
             target_phone = "+" + target_phone
-        from firebase import is_admin, propose_admin_transfer
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode transferir o papel de admin.")
             return {"status": "ok"}
@@ -173,7 +167,6 @@ async def whatsapp_webhook(request: Request):
 
     # Accept admin role: o
     if cmd == "/o":
-        from firebase import accept_admin_transfer
         result = accept_admin_transfer(phone)
         if result:
             from_phone = result["from"]  # now returns a dict instead of just True
@@ -186,7 +179,6 @@ async def whatsapp_webhook(request: Request):
 
     # Admin can define custom list title: b <title>
     if cmd == "/b" and arg:
-        from firebase import is_admin
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode modificar o título.")
             return {"status": "ok"}
@@ -242,7 +234,6 @@ async def whatsapp_webhook(request: Request):
 
     # Consultar pessoas na lista: p (all)
     if cmd == "/p":
-        from firebase import get_user_group
         group = get_user_group(phone)
 
         # Query users collection for same list/owner/instance
@@ -292,7 +283,6 @@ async def whatsapp_webhook(request: Request):
 
     # Clear all items: l (admin only)
     if cmd == "/l":
-        from firebase import is_admin
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode limpar a listinha inteira.")
             return {"status": "ok"}
@@ -309,17 +299,6 @@ async def whatsapp_webhook(request: Request):
         else:
             send_message(from_number, f"⚠️ Item não encontrado: {arg}")
         return {"status": "ok"}
-
-    # Eliminate user (temporary)
-    if cmd == "/el" and arg:
-        from firebase import eliminate_user
-        eliminate_user(arg)
-        send_message(from_number, f"🗑️ Usuário {arg} removido do banco de dados.")
-        return {"status": "ok"}
-
-    # If no valid command matched
-    send_message(from_number, "⚠️ Comando inválido. Envie /m para ver o menu.")
-    return {"status": "ok"}
 
 def send_message(to, body):
     try:
