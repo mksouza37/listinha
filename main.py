@@ -12,7 +12,9 @@ from jinja2 import Template
 import weasyprint
 import os
 from urllib.parse import quote
-from urllib.parse import unquote_plus
+import locale
+locale.setlocale(locale.LC_COLLATE, "pt_BR.UTF-8")
+
 
 app = FastAPI()
 
@@ -55,7 +57,7 @@ def view_list(g: str):
 
     data = doc.to_dict()
     title = data.get("title", "Sua Listinha")
-    items = sorted(data.get("itens", []), key=str.lower)  # ensure alphabetical
+    items = sorted(data.get("itens", []), key=locale.strxfrm)
 
     print(f"📦 Found doc with {len(items)} items")
     content = render_list_page(g, items, title)
@@ -318,7 +320,8 @@ def get_items_from_doc_id(doc_id):
     ref = firestore.client().collection("listas").document(doc_id)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
-    return sorted(items, key=str.lower)
+    return sorted(items, key=locale.strxfrm)
+
 
 def render_list_page(doc_id, items, title="Sua Listinha"):
     with open("templates/list.html", encoding="utf-8") as f:
