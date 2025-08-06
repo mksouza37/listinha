@@ -2,8 +2,8 @@ import os
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
-import locale
-locale.setlocale(locale.LC_COLLATE, "pt_BR.UTF-8")
+from icu import Collator, Locale
+collator = Collator.createInstance(Locale("pt_BR"))
 
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -67,7 +67,8 @@ def get_items(phone):
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
-    return sorted(items, key=locale.strxfrm)
+    return sorted(items, key=collator.getSortKey)
+
 
 def clear_items(phone):
     group = get_user_group(phone)
