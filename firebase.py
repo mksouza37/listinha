@@ -52,7 +52,7 @@ def add_item(phone, item):
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
 
-    item = item.strip().title()
+    item = item.strip().capitalize()
     print(f"📥 Trying to insert item: {item}")
 
     if any(i.lower() == item.lower() for i in items):

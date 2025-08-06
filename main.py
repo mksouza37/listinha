@@ -292,14 +292,9 @@ async def whatsapp_webhook(request: Request):
         send_message(from_number, "✅ Sua listinha foi limpa!")
         return {"status": "ok"}
 
-    # Delete item
-    if cmd == "/a" and arg:
-        deleted = delete_item(phone, arg)
-        if deleted:
-            send_message(from_number, f"❌ Item removido: {arg}")
-        else:
-            send_message(from_number, f"⚠️ Item não encontrado: {arg}")
-        return {"status": "ok"}
+    # ✅ Fallback for unknown commands
+    send_message(from_number, "❓ Não entendi. Quer adicionar um item? Use i seguido do nome. Veja o menu com m.")
+    return {"status": "ok"}
 
 def send_message(to, body):
     try:
