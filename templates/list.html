@@ -42,11 +42,11 @@
 </head>
 <body>
   <h1>📝 {{ title }}  ({{ count }} itens)</h1>
-  <ol>
-    {% for item in items %}
-    <li>{{ item.lstrip('.• ').strip() }}</li>
-    {% endfor %}
-  </ol>
+  <ul>
+  {% for item in items %}
+  <li>{{ item.lstrip('.• ').strip() }}</li>
+  {% endfor %}
+</ul>
 
   <div class="actions hide-on-pdf">
     <a class="button" href="/view/pdf?g={{ doc_id }}" target="_blank">📎 Gerar PDF</a>

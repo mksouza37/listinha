@@ -43,8 +43,10 @@ def view_list(g: str):
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
-    print(f"📦 Found doc with {len(data.get('itens', []))} items")
-    return HTMLResponse(content=render_list_page(g, data.get("itens", [])))
+    items = sorted(data.get("itens", []), key=collator.getSortKey)  # <-- SORT HERE
+
+    print(f"📦 Found doc with {len(items)} items")
+    return HTMLResponse(content=render_list_page(g, items))  # <-- pass sorted items
 
 @app.get("/view/pdf")
 def view_list(g: str):
@@ -133,6 +135,16 @@ async def whatsapp_webhook(request: Request):
         success, status = add_user_to_list(phone, target_phone)
         if success:
             send_message(from_number, f"📢 Usuário {target_phone} adicionado à sua Listinha.")
+
+            welcome = (
+                "👋 Olá! Você foi adicionado a uma *Listinha compartilhada* no WhatsApp.\n\n"
+                "🛒 Todos os membros podem adicionar ou remover itens de uma lista de compras.\n"
+                "📌 Para ver os comandos disponíveis, envie: *m*\n"
+                "ℹ️ A lista será atualizada automaticamente para todos.\n\n"
+                "✅ Comece agora adicionando um item com: i pão"
+            )
+            send_message(f"whatsapp:{target_phone}", welcome)
+
         elif status == "already_in_list":
             send_message(from_number, f"⚠️ O número {target_phone} já participa de outra Listinha.")
         return {"status": "ok"}
@@ -151,8 +163,20 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"⚠️ O número {target_phone} não é membro da sua Listinha.")
         return {"status": "ok"}
 
-    # Self-remove: s
+    # Self-remove: s <your phone>
     if cmd == "/s":
+        if not arg:
+            send_message(from_number, "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s +551199999999")
+            return {"status": "ok"}
+
+        target_phone = arg.strip()
+        if not target_phone.startswith("+"):
+            target_phone = "+" + target_phone
+
+        if target_phone != phone:
+            send_message(from_number, "❌ O número informado não corresponde ao seu. Tente novamente.")
+            return {"status": "ok"}
+
         if remove_self_from_list(phone):
             send_message(from_number, "👋 Você saiu da Listinha.")
         else:
@@ -212,6 +236,7 @@ async def whatsapp_webhook(request: Request):
             
             "🧹 Limpar lista inteira: l\n"
             "🏷️ Alterar título da lista: b <título>\n"
+            "📎 Gerar PDF da lista: d\n"
             "👤 Adicionar usuário: u <telefone>\n"
             "➖ Remover usuário: e <telefone>\n"
             "🔄 Transferir papel de admin: t <telefone>\n"
@@ -290,6 +315,24 @@ async def whatsapp_webhook(request: Request):
                 text = f"🗒️ *{title}* está vazia."
             send_message(from_number, text)
 
+        return {"status": "ok"}
+
+    # Download PDF: d
+    if cmd == "/d":
+        group = get_user_group(phone)
+        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+        doc_id = quote(raw_doc_id, safe="")
+
+        # Optional: check if list has items
+        ref = firestore.client().collection("listas").document(raw_doc_id)
+        doc = ref.get()
+        count = len(doc.to_dict().get("itens", [])) if doc.exists else 0
+
+        if count == 0:
+            send_message(from_number, "🗒️ Sua listinha está vazia. Adicione itens antes de gerar o PDF.")
+        else:
+            send_message(from_number,
+                         f"📎 Aqui está sua listinha em PDF:\nhttps://listinha-t5ga.onrender.com/view/pdf?g={doc_id}")
         return {"status": "ok"}
 
     # Clear all items: l (admin only)
