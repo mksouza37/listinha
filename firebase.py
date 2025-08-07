@@ -5,6 +5,7 @@ from firebase_admin import credentials, firestore
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
 import pytz
+from datetime import datetime
 
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -50,29 +51,36 @@ def add_item(phone, item):
     group = get_user_group(phone)
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     doc_ref = firestore.client().collection("listas").document(doc_id)
-
     doc = doc_ref.get()
+
     if not doc.exists:
         return False
 
     data = doc.to_dict()
-    items = data.get("itens", [])
+    existing_items = data.get("itens", [])
 
-    # Check for duplicates (normalize string)
-    normalized_new = item.strip().lower()
-    for i in items:
-        existing = i["text"].lower() if isinstance(i, dict) else i.lower()
-        if normalized_new == existing:
+    # Normalize and capitalize item name
+    item = item.strip().capitalize()
+
+    # Prevent duplicates (only compare the "item" field)
+    for entry in existing_items:
+        if isinstance(entry, dict) and entry.get("item") == item:
             return False
 
-    # Append item with metadata
-    items.append({
-        "text": item.strip(),
-        "added_by": phone,
-        "timestamp": firestore.SERVER_TIMESTAMP
-    })
+    # Format timestamp for Brazil
+    sao_paulo = pytz.timezone("America/Sao_Paulo")
+    now = datetime.now(sao_paulo).strftime("%d/%m/%y %H:%M")
 
-    doc_ref.update({"itens": items})
+    # Add new structured entry
+    new_entry = {
+        "item": item,
+        "user": phone,
+        "timestamp": now
+    }
+    existing_items.append(new_entry)
+
+    # Save updated list
+    doc_ref.update({"itens": existing_items})
     return True
 
 def get_items(phone):
