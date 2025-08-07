@@ -47,7 +47,7 @@ def view_list(g: str):
     data = doc.to_dict()
     items = sorted(data.get("itens", []), key=collator.getSortKey)
     title = data.get("title", "Sua Listinha")
-    updated_at = ""  # ou use datetime.now().strftime(...) se quiser
+    updated_at = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M")
 
     html_content = render_list_page(g, items, title, updated_at=updated_at)
 
