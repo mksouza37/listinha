@@ -343,7 +343,9 @@ async def whatsapp_webhook(request: Request):
         members_display = []
         for doc in same_list_users:
             data = doc.to_dict()
-            role = data["group"].get("role", "user")
+            group_data = data.get("group", {})
+            role = "admin" if group_data.get("owner") == group["owner"] and group_data.get(
+                "role") == "admin" else "user"
             name = data.get("name", "")
             entry = f"{doc.id} ({role})"
             if name:
