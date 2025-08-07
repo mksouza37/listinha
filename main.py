@@ -35,10 +35,8 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 def root():
     return {"message": "Listinha is running"}
 
-from fastapi.responses import HTMLResponse, Response
-
 @app.get("/view")
-def view_list(g: str):
+def view_list(g: str, t: str = "", request: Request = None):  # <-- t será ignorado, mas força cache-busting
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
