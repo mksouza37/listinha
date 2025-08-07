@@ -15,6 +15,7 @@ from urllib.parse import quote
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
 from datetime import datetime
+import time
 
 app = FastAPI()
 
@@ -56,7 +57,7 @@ def view_list(g: str, t: str = "", request: Request = None):  # <-- t será igno
     })
 
 @app.get("/view/pdf")
-def view_list(g: str):
+def view_list(g: str, t: str = ""):
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
@@ -65,10 +66,7 @@ def view_list(g: str):
     data = doc.to_dict()
     title = data.get("title", "Sua Listinha")
     items = sorted(data.get("itens", []), key=collator.getSortKey)
-
-    # Nova linha: gerar timestamp formatado
     now = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M")
-
     content = render_list_page(g, items, title, updated_at=now)
 
     pdf = weasyprint.HTML(string=content).write_pdf()
@@ -342,8 +340,10 @@ async def whatsapp_webhook(request: Request):
         if count == 0:
             send_message(from_number, "🗒️ Sua listinha está vazia. Adicione itens antes de gerar o PDF.")
         else:
+            timestamp = int(time.time())
             send_message(from_number,
-                         f"📎 Aqui está sua listinha em PDF:\nhttps://listinha-t5ga.onrender.com/view/pdf?g={doc_id}")
+                         f"📎 Aqui está sua listinha em PDF:\nhttps://listinha-t5ga.onrender.com/view/pdf?g={doc_id}&t={timestamp}")
+
         return {"status": "ok"}
 
     # Clear all items: l (admin only)
