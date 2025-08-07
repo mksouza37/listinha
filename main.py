@@ -16,7 +16,6 @@ from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
 from datetime import datetime
 
-
 app = FastAPI()
 
 # Map WhatsApp service numbers to instance IDs
@@ -36,19 +35,27 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 def root():
     return {"message": "Listinha is running"}
 
+from fastapi.responses import HTMLResponse, Response
+
 @app.get("/view")
 def view_list(g: str):
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
-        print(f"⚠️ Document not found: {g}")
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
-    items = sorted(data.get("itens", []), key=collator.getSortKey)  # <-- SORT HERE
+    items = sorted(data.get("itens", []), key=collator.getSortKey)
+    title = data.get("title", "Sua Listinha")
+    updated_at = ""  # ou use datetime.now().strftime(...) se quiser
 
-    print(f"📦 Found doc with {len(items)} items")
-    return HTMLResponse(content=render_list_page(g, items))  # <-- pass sorted items
+    html_content = render_list_page(g, items, title, updated_at=updated_at)
+
+    return Response(content=html_content, media_type="text/html", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
 
 @app.get("/view/pdf")
 def view_list(g: str):
