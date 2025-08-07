@@ -37,7 +37,13 @@ def root():
     return {"message": "Listinha is running"}
 
 @app.get("/view")
-def view_list(g: str, t: str = "", request: Request = None):  # <-- t será ignorado, mas força cache-busting
+def unified_view(
+    g: str,
+    format: str = Query("html"),               # "html" ou "pdf"
+    footer: str = Query("false"),              # "true" ou "false"
+    download: str = Query("false"),            # força download do PDF
+    t: str = ""                                # usado para cache busting
+):
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
@@ -46,33 +52,24 @@ def view_list(g: str, t: str = "", request: Request = None):  # <-- t será igno
     data = doc.to_dict()
     items = sorted(data.get("itens", []), key=collator.getSortKey)
     title = data.get("title", "Sua Listinha")
-    updated_at = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M")
 
-    html_content = render_list_page(g, items, title, updated_at=updated_at)
+    show_footer = footer.lower() == "true"
+    updated_at = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
 
+    html_content = render_list_page(g, items, title, updated_at=updated_at, show_footer=show_footer)
+
+    if format == "pdf":
+        pdf = weasyprint.HTML(string=html_content).write_pdf()
+
+        return Response(content=pdf, media_type="application/pdf", headers={
+            "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        })
+
+    # HTML
     return Response(content=html_content, media_type="text/html", headers={
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    })
-
-@app.get("/view/pdf")
-def view_list(g: str, t: str = ""):
-    ref = firestore.client().collection("listas").document(g)
-    doc = ref.get()
-    if not doc.exists:
-        return HTMLResponse("❌ Lista não encontrada.")
-
-    data = doc.to_dict()
-    title = data.get("title", "Sua Listinha")
-    items = sorted(data.get("itens", []), key=collator.getSortKey)
-    now = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M")
-    content = render_list_page(g, items, title, updated_at=now)
-
-    pdf = weasyprint.HTML(string=content).write_pdf()
-
-    return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{g}.pdf",
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         "Pragma": "no-cache",
         "Expires": "0"
@@ -315,8 +312,9 @@ async def whatsapp_webhook(request: Request):
         title = doc.to_dict().get("title", "Sua Listinha") if doc.exists else "Sua Listinha"
 
         if len(items) > 20:
-            send_message(from_number,
-                         f"📄 *{title}* tem {len(items)} itens! Veja aqui:\nhttps://listinha-t5ga.onrender.com/view?g={doc_id}")
+            html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
+            send_message(from_number, f"📄 *{title}* tem {len(items)} itens! Veja aqui:\n{html_url}")
+
         else:
             if items:
                 text = f"📝 *{title}:*\n" + "\n".join(f"• {item}" for item in items)
@@ -341,8 +339,8 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, "🗒️ Sua listinha está vazia. Adicione itens antes de gerar o PDF.")
         else:
             timestamp = int(time.time())
-            send_message(from_number,
-                         f"📎 Aqui está sua listinha em PDF:\nhttps://listinha-t5ga.onrender.com/view/pdf?g={doc_id}&t={timestamp}")
+            pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&download=true&t={timestamp}"
+            send_message(from_number, f"📎 Aqui está sua listinha em PDF:\n{pdf_url}")
 
         return {"status": "ok"}
 
