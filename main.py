@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from firebase import (
     add_item, get_items, delete_item, clear_items,
     get_user_group, create_new_list, user_in_list,
