@@ -362,7 +362,12 @@ async def whatsapp_webhook(request: Request):
     # View list
     if cmd == "/v":
         raw_items = get_items(phone)
-        items = [entry["item"] for entry in raw_items if isinstance(entry, dict) and "item" in entry]
+
+        # Support both dict-style and legacy string-style items
+        items = [
+            entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
+            for entry in raw_items
+        ]
 
         group = get_user_group(phone)
         raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
@@ -376,7 +381,6 @@ async def whatsapp_webhook(request: Request):
         if len(items) > 20:
             html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
             send_message(from_number, f"📄 *{title}* tem {len(items)} itens! Veja aqui:\n{html_url}")
-
         else:
             if items:
                 text = f"📝 *{title}:*\n" + "\n".join(f"• {item}" for item in items)

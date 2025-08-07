@@ -103,24 +103,28 @@ def clear_items(phone):
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
     db.collection("listas").document(doc_id).set({"itens": []})
 
-def delete_item(phone, item_name):
+def delete_item(phone, item):
     group = get_user_group(phone)
-    doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-    ref = db.collection("listas").document(doc_id)
+    doc_id = f"{group['instance']}__{group['owner']}__{group['list']}"
+    ref = firestore.client().collection("listas").document(doc_id)
+
     doc = ref.get()
     if not doc.exists:
         return False
-    items = doc.to_dict().get("itens", [])
 
-    # Filter out the item matching by name
-    new_items = [
-        i for i in items
-        if (i.lower() if isinstance(i, str) else i.get("item", "").lower()) != item_name.lower()
+    data = doc.to_dict()
+    items = data.get("itens", [])
+
+    # Updated: filter out matching item name, regardless of structure
+    updated_items = [
+        entry for entry in items
+        if not (
+            (isinstance(entry, dict) and entry.get("item", "").strip().lower() == item.strip().lower()) or
+            (isinstance(entry, str) and entry.strip().lower() == item.strip().lower())
+        )
     ]
 
-    if len(new_items) == len(items):
-        return False  # No item removed
-    ref.set({"itens": new_items})
+    ref.update({"itens": updated_items})
     return True
 
 def user_in_list(phone):
