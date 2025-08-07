@@ -89,8 +89,14 @@ def get_items(phone):
     ref = db.collection("listas").document(doc_id)
     doc = ref.get()
     items = doc.to_dict()["itens"] if doc.exists else []
-    return sorted(items, key=collator.getSortKey)
 
+    # Handle both old (strings) and new (dict) formats
+    names_only = [
+        i if isinstance(i, str) else i.get("item", "")
+        for i in items
+    ]
+
+    return sorted(names_only, key=collator.getSortKey)
 
 def clear_items(phone):
     group = get_user_group(phone)
@@ -104,10 +110,16 @@ def delete_item(phone, item_name):
     doc = ref.get()
     if not doc.exists:
         return False
-    items = doc.to_dict()["itens"]
-    new_items = [i for i in items if i.lower() != item_name.lower()]
+    items = doc.to_dict().get("itens", [])
+
+    # Filter out the item matching by name
+    new_items = [
+        i for i in items
+        if (i.lower() if isinstance(i, str) else i.get("item", "").lower()) != item_name.lower()
+    ]
+
     if len(new_items) == len(items):
-        return False
+        return False  # No item removed
     ref.set({"itens": new_items})
     return True
 
