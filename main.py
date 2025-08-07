@@ -16,6 +16,9 @@ from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
 from datetime import datetime
 import time
+import pytz
+import re
+
 
 app = FastAPI()
 
@@ -36,6 +39,30 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 def root():
     return {"message": "Listinha is running"}
 
+def normalize_phone(phone_input: str, admin_phone: str) -> str:
+    """
+    Normalize a phone number. If it starts with '+', use as-is.
+    Otherwise, assume same country as admin's phone number.
+    """
+    phone_input = phone_input.strip()
+
+    # Already in full international format
+    if phone_input.startswith("+"):
+        full_number = phone_input
+    else:
+        # Extract country code from admin phone (e.g., +55)
+        match = re.match(r"\+?(\d{2,4})\d{6,15}", admin_phone)
+        if not match:
+            raise ValueError("⚠️ Não foi possível identificar o DDI do administrador.")
+        country_code = match.group(1)
+        full_number = f"+{country_code}{phone_input.lstrip('0')}"
+
+    # Safety validation
+    if not re.match(r"^\+\d{10,15}$", full_number):
+        raise ValueError("⚠️ Número de telefone inválido. Verifique o DDI e o número.")
+
+    return full_number
+
 @app.get("/view")
 def unified_view(
     g: str,
@@ -54,7 +81,8 @@ def unified_view(
     title = data.get("title", "Sua Listinha")
 
     show_footer = footer.lower() == "true"
-    updated_at = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
+    sao_paulo = pytz.timezone("America/Sao_Paulo")
+    updated_at = datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
 
     html_content = render_list_page(g, items, title, updated_at=updated_at, show_footer=show_footer)
 
@@ -132,9 +160,13 @@ async def whatsapp_webhook(request: Request):
 
     # Add new user (u <phone>)
     if cmd == "/u" and arg:
-        target_phone = arg.strip()
-        if not target_phone.startswith("+"):
-            target_phone = "+" + target_phone
+
+        try:
+            target_phone = normalize_phone(arg, phone)
+        except ValueError as e:
+            send_message(from_number, str(e))
+            return {"status": "ok"}
+
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
             return {"status": "ok"}
@@ -157,9 +189,12 @@ async def whatsapp_webhook(request: Request):
 
     # Remove user (admin): e <phone>
     if cmd == "/e" and arg:
-        target_phone = arg.strip()
-        if not target_phone.startswith("+"):
-            target_phone = "+" + target_phone
+        try:
+            target_phone = normalize_phone(arg, phone)
+        except ValueError as e:
+            send_message(from_number, str(e))
+            return {"status": "ok"}
+
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode remover usuários.")
             return {"status": "ok"}
@@ -172,12 +207,15 @@ async def whatsapp_webhook(request: Request):
     # Self-remove: s <your phone>
     if cmd == "/s":
         if not arg:
-            send_message(from_number, "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s 551199999999")
+            send_message(from_number,
+                         "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s 11999999999")
             return {"status": "ok"}
 
-        target_phone = arg.strip()
-        if not target_phone.startswith("+"):
-            target_phone = "+" + target_phone
+        try:
+            target_phone = normalize_phone(arg, phone)
+        except ValueError as e:
+            send_message(from_number, str(e))
+            return {"status": "ok"}
 
         if target_phone != phone:
             send_message(from_number, "❌ O número informado não corresponde ao seu. Tente novamente.")
@@ -191,9 +229,12 @@ async def whatsapp_webhook(request: Request):
 
     # Transfer admin role: t <phone>
     if cmd == "/t" and arg:
-        target_phone = arg.strip()
-        if not target_phone.startswith("+"):
-            target_phone = "+" + target_phone
+        try:
+            target_phone = normalize_phone(arg, phone)
+        except ValueError as e:
+            send_message(from_number, str(e))
+            return {"status": "ok"}
+
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode transferir o papel de admin.")
             return {"status": "ok"}
