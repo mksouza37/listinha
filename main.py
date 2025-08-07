@@ -14,6 +14,8 @@ import os
 from urllib.parse import quote
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
+from datetime import datetime
+
 
 app = FastAPI()
 
@@ -53,20 +55,24 @@ def view_list(g: str):
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
-        print(f"⚠️ Document not found: {g}")
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
     title = data.get("title", "Sua Listinha")
     items = sorted(data.get("itens", []), key=collator.getSortKey)
 
-    print(f"📦 Found doc with {len(items)} items")
-    content = render_list_page(g, items, title)
+    # Nova linha: gerar timestamp formatado
+    now = datetime.now().strftime("Atualizado em: %d/%m/%Y às %H:%M")
+
+    content = render_list_page(g, items, title, updated_at=now)
 
     pdf = weasyprint.HTML(string=content).write_pdf()
 
     return Response(content=pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=listinha_{g}.pdf"
+        "Content-Disposition": f"inline; filename=listinha_{g}.pdf",
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
     })
 
 @app.post("/webhook")
@@ -166,7 +172,7 @@ async def whatsapp_webhook(request: Request):
     # Self-remove: s <your phone>
     if cmd == "/s":
         if not arg:
-            send_message(from_number, "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s +551199999999")
+            send_message(from_number, "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s 551199999999")
             return {"status": "ok"}
 
         target_phone = arg.strip()
@@ -369,11 +375,17 @@ def get_items_from_doc_id(doc_id):
     items = doc.to_dict()["itens"] if doc.exists else []
     return sorted(items, key=collator.getSortKey)
 
-def render_list_page(doc_id, items, title="Sua Listinha"):
+def render_list_page(doc_id, items, title="Sua Listinha", updated_at=""):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
     template = Template(html)
 
     doc_id_encoded = quote(doc_id, safe="")
-    return template.render(doc_id=doc_id_encoded, items=items, count=len(items), title=title)
+    return template.render(
+        doc_id=doc_id_encoded,
+        items=items,
+        count=len(items),
+        title=title,
+        updated_at=updated_at
+    )
 

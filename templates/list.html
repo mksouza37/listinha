@@ -9,20 +9,27 @@
       font-family: sans-serif;
       padding: 2rem;
       background: #fafafa;
+      position: relative;
+      min-height: 100vh;
     }
+
     h1 {
       font-size: 1.5rem;
     }
-    ol {
+
+    ul {
       padding-left: 1.5rem;
     }
+
     li {
       margin: 0.5rem 0;
     }
+
     .actions {
       margin-top: 2rem;
       text-align: left;
     }
+
     a.button {
       display: inline-block;
       padding: 0.5rem 1.2rem;
@@ -32,24 +39,49 @@
       text-decoration: none;
       font-weight: bold;
     }
+
     /* Oculta elementos com essa classe no PDF */
     @media print {
       .hide-on-pdf {
         display: none;
       }
     }
+
+    /* Oculta no navegador, mostra no PDF */
+    @media screen {
+      .hide-on-screen {
+        display: none;
+      }
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #555;
+    }
   </style>
 </head>
 <body>
   <h1>📝 {{ title }}  ({{ count }} itens)</h1>
+
   <ul>
-  {% for item in items %}
-  <li>{{ item.lstrip('.• ').strip() }}</li>
-  {% endfor %}
-</ul>
+    {% for item in items %}
+    <li>{{ item.lstrip('.• ').strip() }}</li>
+    {% endfor %}
+  </ul>
 
   <div class="actions hide-on-pdf">
     <a class="button" href="/view/pdf?g={{ doc_id }}" target="_blank">📎 Gerar PDF</a>
   </div>
+
+  {% if updated_at %}
+    <div class="footer hide-on-screen">
+      {{ updated_at }}
+    </div>
+  {% endif %}
 </body>
 </html>
