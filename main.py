@@ -378,7 +378,7 @@ def get_items_from_doc_id(doc_id):
     items = doc.to_dict()["itens"] if doc.exists else []
     return sorted(items, key=collator.getSortKey)
 
-def render_list_page(doc_id, items, title="Sua Listinha", updated_at=""):
+def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
     template = Template(html)
@@ -389,6 +389,8 @@ def render_list_page(doc_id, items, title="Sua Listinha", updated_at=""):
         items=items,
         count=len(items),
         title=title,
-        updated_at=updated_at
+        updated_at=updated_at,
+        show_footer=show_footer,
+        timestamp=int(datetime.now().timestamp())
     )
 
