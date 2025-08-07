@@ -17,8 +17,8 @@ collator = Collator.createInstance(Locale("pt_BR"))
 from datetime import datetime
 import time
 import pytz
-import re
-
+import phonenumbers
+from phonenumbers import NumberParseException
 
 app = FastAPI()
 
@@ -39,29 +39,41 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 def root():
     return {"message": "Listinha is running"}
 
-def normalize_phone(phone_input: str, admin_phone: str) -> str:
+def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
     """
-    Normalize a phone number. If it starts with '+', use as-is.
-    Otherwise, assume same country as admin's phone number.
-    """
-    phone_input = phone_input.strip()
+    Normalizes a phone number based on the admin's country.
 
-    # Already in full international format
-    if phone_input.startswith("+"):
-        full_number = phone_input
+    - If the phone already starts with a valid +DDI, it’s parsed directly.
+    - If not, we prepend the admin's DDI and then try parsing.
+    - Returns fully internationalized E.164 format (e.g., +5511988888888)
+    - Returns None if invalid.
+    """
+
+    # Get admin DDI from their phone
+    try:
+        admin_parsed = phonenumbers.parse(admin_phone, None)
+        admin_region = phonenumbers.region_code_for_country_code(admin_parsed.country_code)
+    except NumberParseException:
+        return None  # Invalid admin phone
+
+    # Check if raw_phone already includes a DDI (+ prefix)
+    if raw_phone.startswith("+"):
+        try:
+            parsed = phonenumbers.parse(raw_phone, None)
+            if phonenumbers.is_valid_number(parsed):
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except NumberParseException:
+            return None
     else:
-        # Extract country code from admin phone (e.g., +55)
-        match = re.match(r"\+?(\d{2,4})\d{6,15}", admin_phone)
-        if not match:
-            raise ValueError("⚠️ Não foi possível identificar o DDI do administrador.")
-        country_code = match.group(1)
-        full_number = f"+{country_code}{phone_input.lstrip('0')}"
+        # Try parsing using admin's region code
+        try:
+            parsed = phonenumbers.parse(raw_phone, admin_region)
+            if phonenumbers.is_valid_number(parsed):
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except NumberParseException:
+            return None
 
-    # Safety validation
-    if not re.match(r"^\+\d{10,15}$", full_number):
-        raise ValueError("⚠️ Número de telefone inválido. Verifique o DDI e o número.")
-
-    return full_number
+    return None  # Fallback for any failure
 
 @app.get("/view")
 def unified_view(
@@ -161,10 +173,9 @@ async def whatsapp_webhook(request: Request):
     # Add new user (u <phone>)
     if cmd == "/u" and arg:
 
-        try:
-            target_phone = normalize_phone(arg, phone)
-        except ValueError as e:
-            send_message(from_number, str(e))
+        target_phone = normalize_phone(arg, phone)
+        if not target_phone:
+            send_message(from_number, "❌ Número inválido. Verifique o formato e tente novamente.")
             return {"status": "ok"}
 
         if not is_admin(phone):
@@ -189,10 +200,10 @@ async def whatsapp_webhook(request: Request):
 
     # Remove user (admin): e <phone>
     if cmd == "/e" and arg:
-        try:
-            target_phone = normalize_phone(arg, phone)
-        except ValueError as e:
-            send_message(from_number, str(e))
+
+        target_phone = normalize_phone(arg, phone)
+        if not target_phone:
+            send_message(from_number, "❌ Número inválido. Verifique o formato e tente novamente.")
             return {"status": "ok"}
 
         if not is_admin(phone):
@@ -211,10 +222,9 @@ async def whatsapp_webhook(request: Request):
                          "⚠️ Para sair da Listinha, envie: s <seu número>\nEx: s 11999999999")
             return {"status": "ok"}
 
-        try:
-            target_phone = normalize_phone(arg, phone)
-        except ValueError as e:
-            send_message(from_number, str(e))
+        target_phone = normalize_phone(arg, phone)
+        if not target_phone:
+            send_message(from_number, "❌ Número inválido. Verifique o formato e tente novamente.")
             return {"status": "ok"}
 
         if target_phone != phone:
@@ -224,15 +234,15 @@ async def whatsapp_webhook(request: Request):
         if remove_self_from_list(phone):
             send_message(from_number, "👋 Você saiu da Listinha.")
         else:
-            send_message(from_number, "⚠️ Administradores não podem sair — use a transferência de admin.")
+            send_message(from_number, "⚠️ Você é administrador da lista — use o comando t (transferência de admin.)")
         return {"status": "ok"}
 
     # Transfer admin role: t <phone>
     if cmd == "/t" and arg:
-        try:
-            target_phone = normalize_phone(arg, phone)
-        except ValueError as e:
-            send_message(from_number, str(e))
+
+        target_phone = normalize_phone(arg, phone)
+        if not target_phone:
+            send_message(from_number, "❌ Número inválido. Verifique o formato e tente novamente.")
             return {"status": "ok"}
 
         if not is_admin(phone):

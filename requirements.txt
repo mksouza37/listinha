@@ -7,4 +7,5 @@ jinja2
 weasyprint
 PyICU
 pytz
+phonenumbers
 
