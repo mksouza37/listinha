@@ -124,34 +124,40 @@ def is_admin(phone):
     return group.get("role") == "admin"
 
 def add_user_to_list(admin_phone, target_phone, name=""):
-    db = firestore.client()
+    from firebase_admin import firestore
 
-    # Obtem o grupo do admin
-    admin_ref = db.collection("users").document(admin_phone)
-    admin_doc = admin_ref.get()
+    users_ref = firestore.client().collection("users")
+    admin_doc = users_ref.document(admin_phone).get()
     if not admin_doc.exists:
         return False, "admin_not_found"
 
-    admin_data = admin_doc.to_dict()
-    group_info = admin_data.get("group")
+    group_info = admin_doc.to_dict().get("group")
+    if not group_info:
+        return False, "group_not_found"
 
-    if not group_info or group_info.get("role") != "admin":
-        return False, "not_admin"
+    # Avoid copying admin role
+    new_group_info = {
+        "instance": group_info["instance"],
+        "list": group_info["list"],
+        "owner": group_info["owner"],
+        "role": "user"  # 👈 force "user" role
+    }
 
-    # Verifica se o usuário já está em alguma listinha
-    target_ref = db.collection("users").document(target_phone)
-    target_doc = target_ref.get()
-    if target_doc.exists:
-        return False, "already_in_list"
+    user_ref = users_ref.document(target_phone)
+    if user_ref.get().exists:
+        existing_group = user_ref.get().to_dict().get("group", {})
+        if (
+            existing_group.get("instance") == new_group_info["instance"]
+            and existing_group.get("list") == new_group_info["list"]
+            and existing_group.get("owner") == new_group_info["owner"]
+        ):
+            return False, "already_in_list"
 
-    # Adiciona o novo usuário ao grupo
-    user_ref = db.collection("users").document(target_phone)
     user_ref.set({
-        "group": group_info,
-        "name": name[:20] if name else ""
+        "group": new_group_info,
+        "name": name[:20]
     })
-
-    return True, "success"
+    return True, "added"
 
 def remove_user_from_list(admin_phone, target_phone):
     admin_ref = db.collection("users").document(admin_phone)
