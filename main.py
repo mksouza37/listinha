@@ -361,7 +361,8 @@ async def whatsapp_webhook(request: Request):
 
     # View list
     if cmd == "/v":
-        items = get_items(phone)  # already sorted + capitalized in firebase.py
+        raw_items = get_items(phone)
+        items = [entry["item"] for entry in raw_items if isinstance(entry, dict) and "item" in entry]
 
         group = get_user_group(phone)
         raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"

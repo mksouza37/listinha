@@ -4,6 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
+import pytz
 
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -48,18 +49,30 @@ def set_default_group_if_missing(phone, instance_id="default"):
 def add_item(phone, item):
     group = get_user_group(phone)
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-    ref = db.collection("listas").document(doc_id)
-    doc = ref.get()
-    items = doc.to_dict()["itens"] if doc.exists else []
+    doc_ref = firestore.client().collection("listas").document(doc_id)
 
-    item = item.strip().capitalize()
-    print(f"📥 Trying to insert item: {item}")
+    doc = doc_ref.get()
+    if not doc.exists:
+        return False
 
-    if any(i.lower() == item.lower() for i in items):
-        return False  # Duplicate
+    data = doc.to_dict()
+    items = data.get("itens", [])
 
-    items.append(item)
-    ref.set({"itens": items}, merge=True)
+    # Check for duplicates (normalize string)
+    normalized_new = item.strip().lower()
+    for i in items:
+        existing = i["text"].lower() if isinstance(i, dict) else i.lower()
+        if normalized_new == existing:
+            return False
+
+    # Append item with metadata
+    items.append({
+        "text": item.strip(),
+        "added_by": phone,
+        "timestamp": firestore.SERVER_TIMESTAMP
+    })
+
+    doc_ref.update({"itens": items})
     return True
 
 def get_items(phone):
