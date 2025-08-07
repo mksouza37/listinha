@@ -170,10 +170,14 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, f"⚠️ Item não encontrado: {arg}")
         return {"status": "ok"}
 
-    # Add new user (u <phone>)
+    # Add new user (u <phone> [name])
     if cmd == "/u" and arg:
 
-        target_phone = normalize_phone(arg, phone)
+        parts = arg.strip().split(maxsplit=1)
+        phone_part = parts[0]
+        name = parts[1].strip()[:20] if len(parts) > 1 else ""
+
+        target_phone = normalize_phone(phone_part, phone)
         if not target_phone:
             send_message(from_number, "❌ Número inválido. Verifique o formato e tente novamente.")
             return {"status": "ok"}
@@ -181,12 +185,13 @@ async def whatsapp_webhook(request: Request):
         if not is_admin(phone):
             send_message(from_number, "❌ Apenas o administrador pode adicionar usuários.")
             return {"status": "ok"}
-        success, status = add_user_to_list(phone, target_phone)
+
+        success, status = add_user_to_list(phone, target_phone, name=name)
         if success:
             send_message(from_number, f"📢 Usuário {target_phone} adicionado à sua Listinha.")
 
             welcome = (
-                "👋 Olá! Você foi adicionado a uma *Listinha compartilhada* no WhatsApp.\n\n"
+                f"👋 Olá{name and f' *{name}*' or ''}! Você foi adicionado a uma *Listinha compartilhada* no WhatsApp.\n\n"
                 "🛒 Todos os membros podem adicionar ou remover itens de uma lista de compras.\n"
                 "📌 Para ver os comandos disponíveis, envie: *m*\n"
                 "ℹ️ A lista será atualizada automaticamente para todos.\n\n"
@@ -251,7 +256,7 @@ async def whatsapp_webhook(request: Request):
         if propose_admin_transfer(phone, target_phone):
             send_message(from_number, f"📢 Proposta de transferência enviada para {target_phone}.")
             send_message(f"whatsapp:{target_phone}",
-                         "📢 Você foi indicado para se tornar administrador da Listinha. Envie 'ac' para aceitar.")
+                         "📢 Você foi indicado para se tornar administrador da Listinha. Envie 'o' para aceitar.")
         else:
             send_message(from_number, f"⚠️ O número {target_phone} não é membro da sua Listinha.")
         return {"status": "ok"}
@@ -263,7 +268,7 @@ async def whatsapp_webhook(request: Request):
             from_phone = result["from"]  # now returns a dict instead of just True
             send_message(from_number, "✅ Agora você é o administrador da Listinha.")
             send_message(f"whatsapp:{from_phone}",
-                         "📢 Sua função mudou para *usuário*. Se quiser sair da Listinha, use o comando 's'.")
+                         "📢 Sua função mudou para *usuário*. Se quiser sair da Listinha, use o comando 's' seguido do seu número.")
         else:
             send_message(from_number, "⚠️ Não há nenhuma transferência de admin pendente para você.")
         return {"status": "ok"}
@@ -329,7 +334,6 @@ async def whatsapp_webhook(request: Request):
     if cmd == "/p":
         group = get_user_group(phone)
 
-        # Query users collection for same list/owner/instance
         users_ref = firestore.client().collection("users")
         same_list_users = users_ref.where("group.owner", "==", group["owner"]) \
             .where("group.list", "==", group["list"]) \
@@ -340,9 +344,13 @@ async def whatsapp_webhook(request: Request):
         for doc in same_list_users:
             data = doc.to_dict()
             role = data["group"].get("role", "user")
-            members_display.append(f"{doc.id} ({role})")
+            name = data.get("name", "")
+            entry = f"{doc.id} ({role})"
+            if name:
+                entry += f" — {name}"
+            members_display.append(entry)
 
-        # Sort so admin appears first
+        # Sort: admin first
         members_display.sort(key=lambda x: "(admin)" not in x)
 
         text = "👥 *Pessoas na Listinha:*\n\n" + "\n".join(members_display)

@@ -123,30 +123,35 @@ def is_admin(phone):
     group = doc.to_dict().get("group", {})
     return group.get("role") == "admin"
 
-def add_user_to_list(admin_phone, target_phone):
-    # Check if target is already in a list
-    if user_in_list(target_phone):
+def add_user_to_list(admin_phone, target_phone, name=""):
+    db = firestore.client()
+
+    # Obtem o grupo do admin
+    admin_ref = db.collection("users").document(admin_phone)
+    admin_doc = admin_ref.get()
+    if not admin_doc.exists:
+        return False, "admin_not_found"
+
+    admin_data = admin_doc.to_dict()
+    group_info = admin_data.get("group")
+
+    if not group_info or group_info.get("role") != "admin":
+        return False, "not_admin"
+
+    # Verifica se o usuário já está em alguma listinha
+    target_ref = db.collection("users").document(target_phone)
+    target_doc = target_ref.get()
+    if target_doc.exists:
         return False, "already_in_list"
 
-    # Get admin group
-    admin_ref = db.collection("users").document(admin_phone)
-    admin_group = admin_ref.get().to_dict()["group"]
+    # Adiciona o novo usuário ao grupo
+    user_ref = db.collection("users").document(target_phone)
+    user_ref.set({
+        "group": group_info,
+        "name": name[:20] if name else ""
+    })
 
-    # Create target user document
-    target_group = {
-        "owner": admin_group["owner"],  # admin's phone
-        "list": admin_group["list"],
-        "instance": admin_group["instance"],
-        "role": "user"
-    }
-    db.collection("users").document(target_phone).set({"group": target_group})
-
-    # Add target to members in list
-    doc_id = f"{admin_group['instance']}__{admin_group['owner']}__{admin_group['list']}"
-    list_ref = db.collection("listas").document(doc_id)
-    list_ref.update({"members": firestore.ArrayUnion([target_phone])})
-
-    return True, "added"
+    return True, "success"
 
 def remove_user_from_list(admin_phone, target_phone):
     admin_ref = db.collection("users").document(admin_phone)
