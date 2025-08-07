@@ -89,7 +89,10 @@ def unified_view(
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
-    items = sorted(data.get("itens", []), key=collator.getSortKey)
+    items = sorted(
+        [i for i in data.get("itens", []) if isinstance(i, dict) and "item" in i],
+        key=lambda x: collator.getSortKey(x["item"])
+    )
     title = data.get("title", "Sua Listinha")
 
     show_footer = footer.lower() == "true"
