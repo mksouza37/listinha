@@ -106,6 +106,18 @@ HELP_TEXT = (
 )
 
 MENU_TEXT = (
+    "📋 *Comandos principais*:\n\n"
+    "• i pão — Adicionar item\n"
+    "• a pão — Apagar item\n"
+    "• v — Ver lista\n"
+    "• u <tel> <nome> — Incluir convidado\n"
+    "• h — Ajuda\n\n"
+    "📖 Ver todos os comandos:\n"
+    "https://listinha.app/comandos"
+)
+
+'''
+MENU_TEXT = (
     "📝 *Listinha Menu*:\n\n"
     "📥 Adicionar item: i <item>\n"
     "❌ Apagar item: a <item>\n"
@@ -122,6 +134,7 @@ MENU_TEXT = (
     "🚪 Sair da lista: s\n\n"
     "ℹ️ Ajuda: h / ajuda / help\n"
 )
+'''
 
 def list_members(entries):
     return "👥 *Pessoas na Listinha:*\n\n" + "\n".join(entries)

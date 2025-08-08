@@ -107,9 +107,10 @@ def unified_view(
 
         # Buscar nomes dos usuários
         users_ref = firestore.client().collection("users")
-        same_list_users = users_ref.where("group.owner", "==", owner) \
-            .where("group.list", "==", list_name) \
-            .where("group.instance", "==", instance_id) \
+        same_list_users = users_ref \
+            .filter(field_path="group.owner", op_string="==", value=owner) \
+            .filter(field_path="group.list", op_string="==", value=list_name) \
+            .filter(field_path="group.instance", op_string="==", value=instance_id) \
             .stream()
 
         phone_name_map = {
@@ -155,6 +156,12 @@ def unified_view(
         "Pragma": "no-cache",
         "Expires": "0"
     })
+
+@app.get("/comandos")
+def show_commands():
+    with open("templates/comandos.html", encoding="utf-8") as f:
+        html = f.read()
+    return HTMLResponse(html)
 
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
@@ -341,9 +348,10 @@ async def whatsapp_webhook(request: Request):
         group = get_user_group(phone)
 
         users_ref = firestore.client().collection("users")
-        same_list_users = users_ref.where("group.owner", "==", group["owner"]) \
-            .where("group.list", "==", group["list"]) \
-            .where("group.instance", "==", group["instance"]) \
+        same_list_users = users_ref \
+            .filter(field_path="group.owner", op_string="==", value=group["owner"]) \
+            .filter(field_path="group.list", op_string="==", value=group["list"]) \
+            .filter(field_path="group.instance", op_string="==", value=group["instance"]) \
             .stream()
 
         members_display = []
