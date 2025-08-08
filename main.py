@@ -339,6 +339,7 @@ async def whatsapp_webhook(request: Request):
             "🧹 Limpar lista inteira: l\n"
             "🏷️ Alterar título da lista: b <título>\n"
             "📎 Gerar PDF da lista: d\n"
+            "📊 Gerar PDF detalhado da lista: x\n"
             "👤 Adicionar usuário: u <telefone>\n"
             "➖ Remover usuário: e <telefone>\n"
             "🔄 Transferir papel de admin: t <telefone>\n"
@@ -448,6 +449,17 @@ async def whatsapp_webhook(request: Request):
             pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&download=true&t={timestamp}"
             send_message(from_number, f"📎 Aqui está sua listinha em PDF:\n{pdf_url}")
 
+        return {"status": "ok"}
+
+    # Comando /x – PDF com colunas (produto, usuário, hora)
+    if cmd == "/x":
+        group = get_user_group(phone)
+        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+        doc_id = quote(raw_doc_id, safe="")
+        timestamp = int(time.time())
+
+        pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&mode=vc&footer=true&download=true&t={timestamp}"
+        send_message(from_number, f"📎 Sua Listinha com colunas está pronta:\n{pdf_url}")
         return {"status": "ok"}
 
     # Clear all items: l (admin only)
