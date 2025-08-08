@@ -112,13 +112,13 @@ MENU_TEXT = (
     "• a — Apagar um item\n"
     "• v — Ver a lista\n"
     "• u — Incluir convidado\n"
-    "• h — Ajuda\n\n\n"
+    "• h — Ajuda\n\n"
     "Exemplos\n\n"
-        "n água"
-        "a laranja"
-        "u 11999999999\n\n\n"    
+        "n água\n"
+        "a laranja\n"
+        "u 11999999999 Alice\n\n"    
     "📖 Ver todos os comandos:\n"
-    "https://listinha.app/comandos"
+    "https://listinha.app/static/comandos.html"
 )
 
 '''
