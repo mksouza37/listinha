@@ -25,6 +25,19 @@
       margin: 0.5rem 0;
     }
 
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.4rem;
+      border-bottom: 1px solid #ddd;
+      font-size: 0.95rem;
+    }
+
     .actions {
       margin-top: 2rem;
       text-align: left;
@@ -40,14 +53,12 @@
       font-weight: bold;
     }
 
-    /* Oculta elementos com essa classe no PDF */
     @media print {
       .hide-on-pdf {
         display: none;
       }
     }
 
-    /* Oculta no navegador, mostra no PDF */
     @media screen {
       .hide-on-screen {
         display: none;
@@ -68,11 +79,32 @@
 <body>
   <h1>📝 {{ title }}  ({{ count }} itens)</h1>
 
-  <ul>
-    {% for item in items %}
-    <li>{{ item.item.lstrip('.• ').strip() }}</li>
-    {% endfor %}
-  </ul>
+  {% if mode == 'vc' %}
+    <table>
+      <thead>
+        <tr>
+          <th>Produto</th>
+          <th>Usuário</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.item }}</td>
+          <td>{{ item.user }}</td>
+          <td>{{ item.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <ul>
+      {% for item in items %}
+      <li>{{ item.item.lstrip('.• ').strip() }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
 
   <div class="actions hide-on-pdf">
     <a class="button" href="/view?g={{ doc_id }}&format=pdf&footer=true&download=true" target="_blank">📎 Gerar PDF</a>

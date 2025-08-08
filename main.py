@@ -81,7 +81,8 @@ def unified_view(
     format: str = Query("html"),               # "html" ou "pdf"
     footer: str = Query("false"),              # "true" ou "false"
     download: str = Query("false"),            # força download do PDF
-    t: str = ""                                # usado para cache busting
+    t: str = "",                               # usado para cache busting
+    mode: str = Query("normal")                # "normal" ou "vc"
 ):
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
@@ -89,21 +90,57 @@ def unified_view(
         return HTMLResponse("❌ Lista não encontrada.")
 
     data = doc.to_dict()
-    items = sorted(
-        [i for i in data.get("itens", []) if isinstance(i, dict) and "item" in i],
-        key=lambda x: collator.getSortKey(x["item"])
-    )
     title = data.get("title", "Sua Listinha")
 
     show_footer = footer.lower() == "true"
     sao_paulo = pytz.timezone("America/Sao_Paulo")
     updated_at = datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
 
-    html_content = render_list_page(g, items, title, updated_at=updated_at, show_footer=show_footer)
+    # Novo modo: vc → lista com colunas
+    if mode == "vc":
+        # Extrair partes do doc_id
+        try:
+            instance_id, owner, list_name = g.split("__")
+        except ValueError:
+            return HTMLResponse("❌ ID de documento inválido.")
 
+        # Buscar nomes dos usuários
+        users_ref = firestore.client().collection("users")
+        same_list_users = users_ref.where("group.owner", "==", owner) \
+            .where("group.list", "==", list_name) \
+            .where("group.instance", "==", instance_id) \
+            .stream()
+
+        phone_name_map = {
+            doc.id: doc.to_dict().get("name", "").strip() or doc.id
+            for doc in same_list_users
+        }
+
+        # Montar lista com nome + timestamp
+        items = [
+            {
+                "item": i["item"],
+                "user": phone_name_map.get(i["user"], i["user"]),
+                "timestamp": i["timestamp"]
+            }
+            for i in data.get("itens", [])
+            if isinstance(i, dict) and all(k in i for k in ("item", "user", "timestamp"))
+        ]
+
+        html_content = render_list_page(g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc")
+
+    else:
+        # Modo normal (bullet list)
+        items = sorted(
+            [i for i in data.get("itens", []) if isinstance(i, dict) and "item" in i],
+            key=lambda x: collator.getSortKey(x["item"])
+        )
+
+        html_content = render_list_page(g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal")
+
+    # PDF output
     if format == "pdf":
         pdf = weasyprint.HTML(string=html_content).write_pdf()
-
         return Response(content=pdf, media_type="application/pdf", headers={
             "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -111,7 +148,7 @@ def unified_view(
             "Expires": "0"
         })
 
-    # HTML
+    # HTML output
     return Response(content=html_content, media_type="text/html", headers={
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         "Pragma": "no-cache",
@@ -447,7 +484,7 @@ def get_items_from_doc_id(doc_id):
     items = doc.to_dict()["itens"] if doc.exists else []
     return sorted(items, key=collator.getSortKey)
 
-def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True):
+def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
     template = Template(html)
@@ -460,6 +497,7 @@ def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_fo
         title=title,
         updated_at=updated_at,
         show_footer=show_footer,
-        timestamp=int(datetime.now().timestamp())
+        timestamp=int(datetime.now().timestamp()),
+        mode=mode
     )
 
