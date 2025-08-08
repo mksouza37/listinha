@@ -2,56 +2,266 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Comandos da Listinha</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary: #6c5ce7;
+      --secondary: #a29bfe;
+      --accent: #fd79a8;
+      --light: #f8f9fa;
+      --dark: #343a40;
+      --gray: #6c757d;
+      --border-radius: 12px;
+      --box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    }
+
     body {
-      font-family: sans-serif;
-      padding: 0.66rem;
-      max-width: 90%;
-      margin: auto;
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
+      margin: 0;
+      padding: 2rem;
+      color: var(--dark);
       line-height: 1.6;
-      background: #fdfdfd;
     }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      overflow: hidden;
+      padding: 2.5rem;
+    }
+
     h1 {
-      font-size: 1.6rem;
-      margin-bottom: 1rem;
+      color: var(--primary);
+      font-size: 2.2rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      font-weight: 600;
     }
-    code {
-      background: #f0f0f0;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 0.95rem;
+
+    h1::before {
+      content: "📖";
+      margin-right: 0.8rem;
+      font-size: 1.8rem;
     }
-    li {
-      margin-bottom: 0.6rem;
+
+    .subtitle {
+      color: var(--gray);
+      font-size: 1rem;
+      margin-bottom: 2rem;
+      font-weight: 300;
+    }
+
+    .command-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .command-item {
+      padding: 0.8rem 1.2rem;
+      margin-bottom: 0.8rem;
+      border-radius: var(--border-radius);
+      background: var(--light);
+      transition: all 0.2s ease;
+    }
+
+    .command-item:hover {
+      transform: translateX(5px);
+      box-shadow: 0 4px 12px rgba(108, 92, 231, 0.1);
+    }
+
+    .command {
+      display: flex;
+      align-items: baseline;
+    }
+
+    .command-code {
+      background: var(--primary);
+      color: white;
+      padding: 0.3rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-right: 1rem;
+      min-width: 1.8rem;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .command-desc {
+      flex-grow: 1;
+    }
+
+    .command-example {
+      color: var(--gray);
+      font-size: 0.9rem;
+      margin-top: 0.4rem;
+      margin-left: 3.8rem; /* 8 positions from the dash */
+      font-family: 'Courier New', monospace;
+    }
+
+    .command-example::before {
+      content: "ex.: ";
+      color: var(--accent);
+    }
+
+    .footer {
+      margin-top: 2.5rem;
+      text-align: center;
+      color: var(--gray);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 1.5rem;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      .command-code {
+        margin-right: 0.8rem;
+      }
+
+      .command-example {
+        margin-left: 3rem;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>📖 Todos os Comandos da Listinha</h1>
-  <ul>
-    <li><code>i</code> — Adicionar um item</li>
-    <li><code></code>          ex.: i melancia</li>
-    <li><code></code>               i banana 1 dúzia</li>
-    <li><code>a</code> — Apagar um item</li>
-    <li><code></code>          ex.: a banana 1 dúzia</li>
-    <li><code>u</code> — Incluir convidado</li>
-    <li><code></code>          ex.: u 11999999999 Alice </li>
-    <li><code>v</code> — Ver a lista</li>
-    <li><code>x</code> — Ver quem incluiu e quando</li>
-    <li><code>d</code> — Baixar a lista em PDF</li>
-    <li><code>l</code> — Limpar toda a lista</li>
-    <li><code>b</code> — Renomear a lista</li>
-    <li><code></code>          ex.: b Lista de Tarefas</li>
-    <li><code>p</code> — Ver quem está na lista</li>
-    <li><code>e</code> — Remover convidado</li>
-    <li><code></code>          ex.: e 11999999999</li>
-    <li><code>t</code> — Transferir o papel de dono</li>
-    <li><code></code>          ex.: t 11999999999</li>
-    <li><code>o</code> — Aceitar ser dono da lista</li>
-    <li><code>m</code> ou <code>menu</code> — Mostrar este menu</li>
-    <li><code>s</code> — Sair da lista</li>
-    <li><code>h</code> — Ajuda</li>
-  </ul>
+  <div class="container">
+    <h1>Todos os Comandos da Listinha</h1>
+    <p class="subtitle">Gerencie sua lista compartilhada com esses comandos simples</p>
+
+    <ul class="command-list">
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">i</span>
+          <span class="command-desc">Adicionar um item</span>
+        </div>
+        <div class="command-example">i melancia</div>
+        <div class="command-example">i banana 1 dúzia</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">a</span>
+          <span class="command-desc">Apagar um item</span>
+        </div>
+        <div class="command-example">a banana 1 dúzia</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">u</span>
+          <span class="command-desc">Incluir convidado</span>
+        </div>
+        <div class="command-example">u 11999999999 Alice</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">v</span>
+          <span class="command-desc">Ver a lista</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">x</span>
+          <span class="command-desc">Ver quem incluiu e quando</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">d</span>
+          <span class="command-desc">Baixar a lista em PDF</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">l</span>
+          <span class="command-desc">Limpar toda a lista</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">b</span>
+          <span class="command-desc">Renomear a lista</span>
+        </div>
+        <div class="command-example">b Lista de Tarefas</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">p</span>
+          <span class="command-desc">Ver quem está na lista</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">e</span>
+          <span class="command-desc">Remover convidado</span>
+        </div>
+        <div class="command-example">e 11999999999</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">t</span>
+          <span class="command-desc">Transferir o papel de dono</span>
+        </div>
+        <div class="command-example">t 11999999999</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">o</span>
+          <span class="command-desc">Aceitar ser dono da lista</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">m</span>
+          <span class="command-desc">Mostrar este menu</span>
+        </div>
+        <div class="command-example">menu</div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">s</span>
+          <span class="command-desc">Sair da lista</span>
+        </div>
+      </li>
+
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">h</span>
+          <span class="command-desc">Ajuda</span>
+        </div>
+      </li>
+    </ul>
+
+    <div class="footer">
+      ✨ Listinha - Compartilhando listas de forma simples
+    </div>
+  </div>
 </body>
 </html>
