@@ -106,12 +106,17 @@ HELP_TEXT = (
 )
 
 MENU_TEXT = (
+    "📝 *Listinha Menu*:\n\n"
     "📋 *Comandos principais*:\n\n"
-    "• i pão — Adicionar item\n"
-    "• a pão — Apagar item\n"
-    "• v — Ver lista\n"
-    "• u <tel> <nome> — Incluir convidado\n"
-    "• h — Ajuda\n\n"
+    "• i — Adicionar um item\n"
+    "• a — Apagar um item\n"
+    "• v — Ver a lista\n"
+    "• u — Incluir convidado\n"
+    "• h — Ajuda\n\n\n"
+    "Exemplos\n\n"
+        "n água"
+        "a laranja"
+        "u 11999999999\n\n\n"    
     "📖 Ver todos os comandos:\n"
     "https://listinha.app/comandos"
 )

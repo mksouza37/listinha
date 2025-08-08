@@ -9,7 +9,6 @@ from firebase_admin import firestore
 from twilio.rest import Client
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-app.mount("/static", StaticFiles(directory="static"), name="static")
 from jinja2 import Template
 import weasyprint
 import os
@@ -24,6 +23,7 @@ from phonenumbers import NumberParseException
 from messages import *
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Map WhatsApp service numbers to instance IDs
 NUMBER_MAP = {
@@ -161,7 +161,7 @@ def unified_view(
 
 @app.get("/comandos")
 def show_commands():
-    with open("https://listinha-t5ga.onrender.com/static/comandos.html", encoding="utf-8") as f:
+    with open("static/comandos.html", encoding="utf-8") as f:
         html = f.read()
     return HTMLResponse(html)
 
