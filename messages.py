@@ -119,7 +119,6 @@ MENU_TEXT = (
         "u 11999999999 Alice\n\n"    
     "📖 Ver todos os comandos:\n"
     "https://listinha-t5ga.onrender.com/static/comandos.html"
-"
 )
 
 '''
