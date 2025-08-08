@@ -107,18 +107,19 @@ HELP_TEXT = (
 
 MENU_TEXT = (
     "📝 *Listinha Menu*:\n\n"
-    "📋 *Comandos principais*:\n\n"
+    "📋 *Principais comandos*:\n\n"
     "• i — Adicionar um item\n"
     "• a — Apagar um item\n"
     "• v — Ver a lista\n"
     "• u — Incluir convidado\n"
     "• h — Ajuda\n\n"
-    "Exemplos\n\n"
-        "n água\n"
+    "Exemplos de comandos\n\n"
+        "i água\n"
         "a laranja\n"
         "u 11999999999 Alice\n\n"    
     "📖 Ver todos os comandos:\n"
-    "https://listinha.app/static/comandos.html"
+    "https://listinha-t5ga.onrender.com/static/comandos.html"
+"
 )
 
 '''
