@@ -132,14 +132,18 @@ def user_in_list(phone):
     doc = ref.get()
     return doc.exists  # True if user is already in a list
 
-def create_new_list(phone, instance_id="default"):
+def create_new_list(phone, instance_id="default", name=""):
+
     group_data = {
         "owner": phone,
         "list": "default",
         "instance": instance_id,
         "role": "admin"
     }
-    db.collection("users").document(phone).set({"group": group_data})
+    db.collection("users").document(phone).set({
+        "group": group_data,
+        "name": name[:20]  # garante no Firestore também
+    })
 
     doc_id = f"{instance_id}__{phone}__default"
     list_data = {
