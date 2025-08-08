@@ -406,7 +406,8 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, LIST_EMPTY_PDF)
         else:
             timestamp = int(time.time())
-            pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&download=true&t={timestamp}"
+            #pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&download=true&t={timestamp}"
+            pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&&t={timestamp}"
             send_message(from_number, list_download_url(pdf_url))
 
         return {"status": "ok"}
