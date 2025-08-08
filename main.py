@@ -387,7 +387,7 @@ async def whatsapp_webhook(request: Request):
             html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
             send_message(from_number, list_download_pdf(title, len(items), html_url))
         else:
-            send_message(from_number, list_shown(title, items)
+            send_message(from_number, list_shown(title, items))
 
         return {"status": "ok"}
 
