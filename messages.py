@@ -102,7 +102,7 @@ def list_detailed_url(url):
 def not_a_member(phone):
     return f"⚠️ O número *{phone}* não participa desta Listinha."
 
-def indication_text(phone_number_display: str = "1 415-523-8886") -> str:
+def indication_text(display_number: str) -> str:
     return f"""Testei e recomendo. Veja abaixo. 👇
 
 🛒 Listinha: sua lista de compras no WhatsApp
@@ -112,7 +112,7 @@ Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na ho
 A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
 
 Gostaria de experimentar por 1 mês grátis? 
-📞 Salva: {phone_number_display}
+📞 Salva: {display_number}
 ✍️ Manda "oi"
 
 Sua lista será criada e você receberá orientações sobre como utilizar.
@@ -120,12 +120,23 @@ Sua lista será criada e você receberá orientações sobre como utilizar.
 Dica: se após experimentar por um mês você gostar e indicar para amigos, ganha mais 2 meses grátis.
 """
 
-def z_share_reply(share_link: str) -> str:
+def indication_text_short(display_number: str) -> str:
+    # Shorter, safe for wa.me prefill
+    return (
+        "Testei e recomendo. 👇\n\n"
+        "🛒 Listinha no WhatsApp\n"
+        "Família inteira adiciona itens e no dia da compra a lista já está pronta.\n\n"
+        f"Teste 1 mês grátis:\n📞 Salva: {display_number}\n✍️ Manda \"oi\"\n\n"
+        "Se gostar e indicar, ganha +2 meses."
+    )
+
+def z_share_reply(share_link: str, full_text: str) -> str:
     return (
         "📢 Encaminhe o Listinha com 1 toque!\n\n"
-        "Clique no link abaixo, escolha os contatos/grupos e envie:\n"
+        "1) Toque no link e escolha os contatos/grupos:\n"
         f"{share_link}\n\n"
-        "O texto já vai pronto para o WhatsApp, sem aparecer como 'encaminhado'."
+        "2) Se preferir, copie e cole o texto completo abaixo:\n\n"
+        f"{full_text}"
     )
 
 
