@@ -102,6 +102,33 @@ def list_detailed_url(url):
 def not_a_member(phone):
     return f"⚠️ O número *{phone}* não participa desta Listinha."
 
+def indication_text(phone_number_display: str = "1 415-523-8886") -> str:
+    return f"""Testei e recomendo. Veja abaixo. 👇
+
+🛒 Listinha: sua lista de compras no WhatsApp
+
+Acabou aquela estória de quem esqueceu de comprar o que no supermercado! 😄
+Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
+A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
+
+Gostaria de experimentar por 1 mês grátis? 
+📞 Salva: {phone_number_display}
+✍️ Manda "oi"
+
+Sua lista será criada e você receberá orientações sobre como utilizar.
+
+Dica: se após experimentar por um mês você gostar e indicar para amigos, ganha mais 2 meses grátis.
+"""
+
+def z_share_reply(share_link: str) -> str:
+    return (
+        "📢 Encaminhe o Listinha com 1 toque!\n\n"
+        "Clique no link abaixo, escolha os contatos/grupos e envie:\n"
+        f"{share_link}\n\n"
+        "O texto já vai pronto para o WhatsApp, sem aparecer como 'encaminhado'."
+    )
+
+
 LIST_CLEARED = "✅ Sua listinha foi limpa!"
 
 WELCOME_MESSAGE = lambda name, admin: (

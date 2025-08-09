@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 import weasyprint
 import os
+import urllib.parse
 from urllib.parse import quote
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
@@ -24,6 +25,7 @@ from messages import *
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+PUBLIC_DISPLAY_NUMBER = os.getenv("PUBLIC_DISPLAY_NUMBER", "1 415-523-8886")
 
 # Map WhatsApp service numbers to instance IDs
 NUMBER_MAP = {
@@ -249,7 +251,7 @@ async def whatsapp_webhook(request: Request):
             admin_name = admin_data.get("name", "").strip()
             admin_display_name = f"*{admin_name}*" if admin_name else phone
 
-            send_message(phone, WELCOME_MESSAGE(name, admin_display_name))
+            send_message(f"whatsapp:{target_phone}", WELCOME_MESSAGE(name, admin_display_name))
 
         elif status == "already_in_list":
             send_message(from_number, guest_already_in_other_list(target_phone))
@@ -266,7 +268,7 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, NOT_OWNER_CANNOT_REMOVE)
             return {"status": "ok"}
         if remove_user_from_list(phone, target_phone):
-            send_message(from_number, guest_removed(name, target_phone))
+            send_message(from_number, guest_removed("", target_phone))
         else:
             send_message(from_number, not_a_member(target_phone))
         return {"status": "ok"}
@@ -444,6 +446,15 @@ async def whatsapp_webhook(request: Request):
 
     # ✅ Fallback for unknown commands
     send_message(from_number, UNKNOWN_COMMAND)
+    return {"status": "ok"}
+
+if cmd == "/z":
+    text = indication_text(PUBLIC_DISPLAY_NUMBER)
+    encoded = urllib.parse.quote(text, safe="")
+    share_link = f"https://wa.me/?text={encoded}"
+
+    reply = z_share_reply(share_link)
+    send_message(from_number, reply)
     return {"status": "ok"}
 
 def send_message(to, body):
