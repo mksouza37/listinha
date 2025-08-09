@@ -448,14 +448,14 @@ async def whatsapp_webhook(request: Request):
     send_message(from_number, UNKNOWN_COMMAND)
     return {"status": "ok"}
 
-if cmd == "/z":
-    text = indication_text(PUBLIC_DISPLAY_NUMBER)
-    encoded = urllib.parse.quote(text, safe="")
-    share_link = f"https://wa.me/?text={encoded}"
+    if cmd == "/z":
+        text = indication_text(PUBLIC_DISPLAY_NUMBER)
+        encoded = urllib.parse.quote(text, safe="")
+        share_link = f"https://wa.me/?text={encoded}"
 
-    reply = z_share_reply(share_link)
-    send_message(from_number, reply)
-    return {"status": "ok"}
+        reply = z_share_reply(share_link)
+        send_message(from_number, reply)
+        return {"status": "ok"}
 
 def send_message(to, body):
     try:
