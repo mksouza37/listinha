@@ -445,15 +445,13 @@ async def whatsapp_webhook(request: Request):
         return {"status": "ok"}
 
     if cmd == "/z":
-        display = PUBLIC_DISPLAY_NUMBER  # e.g. "11 99999-9999"
-        short_text = indication_text_short(display)
-        full_text = indication_text(display)
+        # 1) Instruction message
+        send_message(from_number, z_step1_instructions())
 
-        encoded = urllib.parse.quote(short_text, safe="")
-        share_link = f"https://wa.me/?text={encoded}"
+        # 2) Ready-to-copy message
+        full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
+        send_message(from_number, full_text)
 
-        reply = z_share_reply(share_link, full_text)
-        send_message(from_number, reply)
         return {"status": "ok"}
 
     # ✅ Fallback for unknown commands

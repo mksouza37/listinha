@@ -120,25 +120,15 @@ Sua lista será criada e você receberá orientações sobre como utilizar.
 Dica: se após experimentar por um mês você gostar e indicar para amigos, ganha mais 2 meses grátis.
 """
 
-def indication_text_short(display_number: str) -> str:
-    # Shorter, safe for wa.me prefill
+def z_step1_instructions() -> str:
     return (
-        "Testei e recomendo. 👇\n\n"
-        "🛒 Listinha no WhatsApp\n"
-        "Família inteira adiciona itens e no dia da compra a lista já está pronta.\n\n"
-        f"Teste 1 mês grátis:\n📞 Salva: {display_number}\n✍️ Manda \"oi\"\n\n"
-        "Se gostar e indicar, ganha +2 meses."
+        "📣 Ajude a divulgar o Listinha!\n\n"
+        "1) COPIE a mensagem que vou enviar a seguir\n"
+        "2) COLE em um grupo ou contato e envie\n"
+        
+        "Pronto? Vou mandar o texto agora 👇"
+        "Muito brigado por ajudar a divulgar!\n\n"
     )
-
-def z_share_reply(share_link: str, full_text: str) -> str:
-    return (
-        "📢 Encaminhe o Listinha com 1 toque!\n\n"
-        "1) Toque no link e escolha os contatos/grupos:\n"
-        f"{share_link}\n\n"
-        "2) Se preferir, copie e cole o texto completo abaixo:\n\n"
-        f"{full_text}"
-    )
-
 
 LIST_CLEARED = "✅ Sua listinha foi limpa!"
 
