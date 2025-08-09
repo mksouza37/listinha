@@ -137,8 +137,7 @@ HELP_TEXT = (
 )
 
 MENU_TEXT = (
-    "📝 *Listinha Menu*:\n\n"
-    "📋 *Principais comandos:*\n\n"
+    "📝 *Listinha Menu*:\n\n"    
     "• i — Incluir um item na lista\n"
     "   Formato: `i <item>`\n"
     "   📌 ex.: `i água`\n"
@@ -151,10 +150,9 @@ MENU_TEXT = (
     "   Formato: `u <telefone> <nome>`\n"
     "   📌 ex.: `u 11999999999 Alice`\n\n"
     "• h — Ajuda e instruções\n\n"
-    "📖 Ver todos os comandos detalhados:\n"
+    "📖 Demais comandos:\n"
     "https://listinha-t5ga.onrender.com/static/comandos.html"
 )
-
 
 def list_members(entries):
     return "👥 *Pessoas na Listinha:*\n\n" + ("\n".join(entries) if entries else "(Ainda não há participantes além do Dono.)")

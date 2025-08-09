@@ -334,7 +334,7 @@ async def whatsapp_webhook(request: Request):
         return {"status": "ok"}
 
     # Menu
-    MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções"}  # removed ajuda/help
+    MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções", "/?"}  # removed ajuda/help
     if cmd in MENU_ALIASES:
         send_message(from_number, MENU_TEXT)
         return {"status": "ok"}
