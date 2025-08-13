@@ -83,21 +83,31 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
 
+# Meta will call this GET once during setup
 @app.get("/meta-webhook")
-def verify(mode: str = "", challenge: str = "", verify_token: str = "",
-          hub_mode: str = None, hub_challenge: str = None, hub_verify_token: str = None):
-    # Meta sometimes sends hub.* params; accept both styles
+def meta_verify(
+    mode: str = "",
+    challenge: str = "",
+    verify_token: str = "",
+    hub_mode: str = None,
+    hub_challenge: str = None,
+    hub_verify_token: str = None,
+):
+    # Meta sometimes sends params as hub.* — handle both
     mode = hub_mode or mode
     token = hub_verify_token or verify_token
     challenge = hub_challenge or challenge
+
     if mode == "subscribe" and token == VERIFY_TOKEN:
+        # MUST return the raw challenge, plain text, 200
         return PlainTextResponse(challenge)
     return PlainTextResponse("Forbidden", status_code=403)
 
+# Meta will post message/status updates here
 @app.post("/meta-webhook")
-async def receive(req: Request):
+async def meta_receive(req: Request):
     body = await req.json()
-    print("🌐 META WEBHOOK:", body, flush=True)  # check Render logs
+    print("🌐 META WEBHOOK:", body, flush=True)
     return {"status": "ok"}
 
 @app.get("/view")
