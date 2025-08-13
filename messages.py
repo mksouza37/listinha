@@ -103,17 +103,17 @@ def not_a_member(phone):
     return f"⚠️ O número *{phone}* não participa desta Listinha."
 
 def indication_text(display_number: str) -> str:
-    return f"""Testei e recomendo. Veja abaixo. 👇
+    return f"""Experimentei e achei interessante. Estou compartilhando.
 
-🛒 Listinha: sua lista de compras no WhatsApp
+🛒 Conheça a Listinha: sua lista de compras no WhatsApp.
 
 Acabou aquela estória de quem esqueceu de comprar o que no supermercado! 😄
 Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
 A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
 
 Gostaria de experimentar por 1 mês grátis? 
-📞 Salva: {display_number}
-✍️ Manda "oi"
+📞 Salve nos seus contatos: {display_number}
+✍️ Envie: "listinha"
 
 Sua lista será criada e você receberá orientações sobre como utilizar.
 
@@ -122,7 +122,7 @@ Dica: se após experimentar por um mês você gostar e indicar para amigos, ganh
 
 def z_step1_instructions() -> str:
     return (
-        "📣 Ajude a divulgar o Listinha!\n\n"
+        "📣 Ajude a divulgar a Listinha!\n\n"
         "1) COPIE a mensagem que vou enviar a seguir\n"
         "2) COLE em um grupo ou contato e envie\n"
         

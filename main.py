@@ -22,6 +22,7 @@ import pytz
 import phonenumbers
 from phonenumbers import NumberParseException
 from messages import *
+from fastapi.responses import PlainTextResponse
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -79,6 +80,25 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
             return None
 
     return None  # Fallback for any failure
+
+VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
+
+@app.get("/meta-webhook")
+def verify(mode: str = "", challenge: str = "", verify_token: str = "",
+          hub_mode: str = None, hub_challenge: str = None, hub_verify_token: str = None):
+    # Meta sometimes sends hub.* params; accept both styles
+    mode = hub_mode or mode
+    token = hub_verify_token or verify_token
+    challenge = hub_challenge or challenge
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return PlainTextResponse(challenge)
+    return PlainTextResponse("Forbidden", status_code=403)
+
+@app.post("/meta-webhook")
+async def receive(req: Request):
+    body = await req.json()
+    print("🌐 META WEBHOOK:", body, flush=True)  # check Render logs
+    return {"status": "ok"}
 
 @app.get("/view")
 def unified_view(
