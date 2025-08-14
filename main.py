@@ -88,13 +88,14 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 
 @app.get("/view")
 def unified_view(
-    request: Request,                          # 👈 added so base_url works for WeasyPrint/links
+    request: Request,                          # needed so WeasyPrint can resolve /static/*
     g: str,
-    format: str = Query("html"),               # "html" ou "pdf"
+    format: str = Query("html"),               # "html" or "pdf"
     footer: str = Query("false"),
     download: str = Query("false"),
-    mode: str = Query("normal")                # "normal" ou "vc"
+    mode: str = Query("normal")                # "normal" or "vc" (detalhada: produto/quem/quando)
 ):
+    # Fetch list doc
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
@@ -103,18 +104,23 @@ def unified_view(
     data = doc.to_dict()
     title = data.get("title", "Sua Listinha")
 
+    # Footer timestamp (optional)
     show_footer = footer.lower() == "true"
     sao_paulo = pytz.timezone("America/Sao_Paulo")
-    updated_at = datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
+    updated_at = (
+        datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M")
+        if show_footer else ""
+    )
 
-    # Modo detalhado (vc): produto + quem incluiu + quando
+    # Build items depending on mode
     if mode == "vc":
+        # Expect g = "<instance>__<owner>__<list>"
         try:
             instance_id, owner, list_name = g.split("__")
         except ValueError:
             return HTMLResponse("❌ ID de documento inválido.")
 
-        # ✅ Firestore Python SDK usa .where(...), não .filter(...)
+        # Resolve phone→display name map for users in the same list
         users_ref = firestore.client().collection("users")
         same_list_users = (
             users_ref
@@ -123,38 +129,36 @@ def unified_view(
             .where("group.instance", "==", instance_id)
             .stream()
         )
-
         phone_name_map = {
-            doc.id: (doc.to_dict().get("name", "") or "").strip() or doc.id
-            for doc in same_list_users
+            u.id: (u.to_dict().get("name", "") or "").strip() or u.id
+            for u in same_list_users
         }
 
         items = [
             {
                 "item": i["item"],
                 "user": phone_name_map.get(i["user"], i["user"]),
-                "timestamp": i["timestamp"]
+                "timestamp": i["timestamp"],
             }
             for i in data.get("itens", [])
             if isinstance(i, dict) and all(k in i for k in ("item", "user", "timestamp"))
         ]
-
-        html_content = render_list_page(
-            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc"
-        )
-
     else:
-        # Modo normal (bullet list)
-        items = sorted(
-            [i for i in data.get("itens", []) if isinstance(i, dict) and "item" in i],
-            key=lambda x: collator.getSortKey(x["item"])
-        )
+        # Normal (bullet) list — keep original order by locale sort if you use it elsewhere
+        raw = data.get("itens", [])
+        items = [i for i in raw if isinstance(i, dict) and "item" in i]
 
-        html_content = render_list_page(
-            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal"
-        )
+    # Render HTML via your existing Jinja template
+    html_content = render_list_page(
+        g,
+        items,
+        title=title,
+        updated_at=updated_at,
+        show_footer=show_footer,
+        mode=mode,
+    )
 
-    # ===== PDF output (with shared CSS) =====
+    # ===== PDF output (WeasyPrint + shared /static/pdf.css) =====
     if format == "pdf":
         html = weasyprint.HTML(string=html_content, base_url=str(request.base_url))
         css_path = os.path.join("static", "pdf.css")
@@ -163,17 +167,23 @@ def unified_view(
             content=pdf,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
+                "Content-Disposition": (
+                    "attachment; filename=listinha_%s.pdf" % quote(g, safe="")
+                    if download.lower() == "true"
+                    else "inline; filename=listinha_%s.pdf" % quote(g, safe="")
+                ),
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
                 "Expires": "0",
             },
         )
 
-    # ===== HTML output (apply same CSS — item 4) =====
-    html_content = f'<link rel="stylesheet" href="/static/pdf.css">\n{html_content}'
+    # ===== HTML output (load the same pdf.css for on-screen consistency) =====
+    # Cache-bust the CSS link so WhatsApp "open in browser" doesn't show an old cached style.
+    css_tag = f'<link rel="stylesheet" href="/static/pdf.css?v={int(datetime.now().timestamp())}">'
+    html_with_css = f"{css_tag}\n{html_content}"
     return Response(
-        content=html_content,
+        content=html_with_css,
         media_type="text/html",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
