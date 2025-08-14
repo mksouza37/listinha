@@ -418,32 +418,35 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # Consultar pessoas na lista: p (all)
+
         if cmd == "/p":
-            group = get_user_group(phone)
+            group = get_user_group(phone)  # {"owner", "list", "instance", "role", ...}
 
             users_ref = firestore.client().collection("users")
-            same_list_users = users_ref \
-                .filter(field_path="group.owner", op_string="==", value=group["owner"]) \
-                .filter(field_path="group.list", op_string="==", value=group["list"]) \
-                .filter(field_path="group.instance", op_string="==", value=group["instance"]) \
+            same_list_users = (
+                users_ref
+                .where("group.owner", "==", group["owner"])
+                .where("group.list", "==", group["list"])
+                .where("group.instance", "==", group.get("instance", "default"))
                 .stream()
+            )
 
-            members_display = []
+            members = []
             for doc in same_list_users:
-                data = doc.to_dict()
-                group_data = data.get("group", {})
-                role = "Dono" if group_data.get("owner") == group["owner"] and group_data.get(
-                    "role") == "admin" else "Convidado"
-                name = data.get("name", "")
-                entry = f"{doc.id} ({role})"
-                if name:
-                    entry += f" — {name}"
-                members_display.append(entry)
+                data = doc.to_dict() or {}
+                grp = data.get("group", {})
+                is_admin = (grp.get("role") == "admin") and (grp.get("owner") == group["owner"])
+                role = "Dono" if is_admin else "Convidado"
+                name = (data.get("name") or "").strip()
 
-            # Sort: admin first
-            members_display.sort(key=lambda x: "(admin)" not in x)
+                # tuple for stable sort: (0 for Dono, 1 for Convidado), then by display text
+                display = f"{doc.id} ({role})" + (f" — {name}" if name else "")
+                members.append((0 if is_admin else 1, display.lower(), display))
 
-            send_message(from_number, list_members(members_display))
+            members.sort(key=lambda t: (t[0], t[1]))
+            member_lines = [m[2] for m in members]
+
+            send_message(from_number, list_members(member_lines))
             return {"status": "ok"}
 
         # View list
