@@ -117,6 +117,8 @@ Gostaria de experimentar por 1 mês grátis?
 
 Sua lista será criada e você receberá orientações sobre como utilizar.
 
+Se quiser saber um pouco mais, consulte nosso site: https://listinha-landing.onrender.com
+
 Dica: se após experimentar por um mês você gostar e indicar para amigos, ganha mais 2 meses grátis.
 """
 

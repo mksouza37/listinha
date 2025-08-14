@@ -335,7 +335,7 @@ async def whatsapp_webhook(request: Request):
         if cmd == "/i" and arg:
             added = add_item(phone, arg)
             if added:
-                #send_message(item_added_log(arg)
+                send_message(item_added_log(arg)
                 print(f"✅ Item adicionado: {arg}")
             else:
                 send_message(from_number, item_already_exists(arg))
