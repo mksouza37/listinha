@@ -541,7 +541,16 @@ def send_message(to, body):
         }
         print(f"📤 META OUT → to=+{to_norm} chars={len(body)}")
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except Exception:
+            # 🔎 Extra debug: show Graph API error payload to pinpoint cause
+            try:
+                print("META ERROR BODY:", r.text)
+            except Exception:
+                pass
+            raise  # rethrow for the outer except
+
         resp = r.json()
         msg_id = (resp.get("messages") or [{}])[0].get("id")
         print(f"✅ Enviado via Meta. id={msg_id}")
