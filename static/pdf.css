@@ -19,7 +19,7 @@ html, body{
   line-height: 1.4;
   color: var(--dark);
   margin: 0;
-  padding: 0;
+  padding: 1rem; /* same as old */
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
@@ -34,7 +34,7 @@ html, body{
   padding: 1.2rem;          /* same as old */
 }
 
-/* ====== Headings (match old) ====== */
+/* ====== Heading (match old) ====== */
 h1{
   color: var(--primary);
   font-size: 1.5rem;        /* old: 1.5rem */
@@ -50,44 +50,49 @@ h1::before{ content: "📖"; margin-right: .6rem; }
 .command-item{ padding: .4rem .4rem; margin-bottom: .255rem; }
 .command{ display: flex; align-items: center; }
 
-/* Badge (match old: pill, not forced circle) */
+/* Badge — keep the pill style from old, just a touch larger to match bigger text */
 .command-code{
   background: var(--primary);
   color: #fff;
-  padding: .2rem .6rem;     /* old */
-  border-radius: 12px;      /* old */
-  font-size: .85rem;        /* old */
+  padding: .25rem .7rem;    /* slightly more than old (.2/.6) to balance size */
+  border-radius: 12px;      /* pill, same look */
+  font-size: .95rem;        /* was .85rem */
   font-weight: 500;         /* old */
   margin-right: .8rem;      /* old */
-  min-width: 1.4rem;        /* old */
-  text-align: center; flex-shrink: 0;
+  min-width: 1.6rem;        /* was 1.4rem */
+  text-align: center;
+  flex-shrink: 0;
 }
 
-/* Description (match old) */
-.command-desc{ font-size: .95rem; color: var(--dark); }
+/* Description — larger as requested; others looked too small */
+.command-desc{
+  font-size: 1.12rem;       /* was .95rem */
+  font-weight: 500;         /* adds a bit of presence without being bold */
+  color: var(--dark);
+}
 
-/* "Formato:" lines (match old inline spacing) */
+/* “Formato:” blocks (keep old spacing/scale) */
 .command-format{
   margin: .2rem 0 0 2rem;   /* old inline margin */
   font-size: 1rem;          /* inherit old body size */
 }
 .command-format strong{ font-weight: 700; }
 
-/* Code look (keep subtle; smaller so line doesn't feel oversized) */
-.command-format code{
+/* Code inside “Formato:” — keep compact so it doesn't overpower */
+code{
   background: #eef1f5;
   padding: 1px 6px;
   border-radius: 6px;
   font-family: ui-monospace,"SFMono-Regular",Menlo,Consolas,"Courier New",monospace;
-  font-size: .9rem;         /* smaller than body, closer to old look */
+  font-size: .85rem;        /* compact like old */
 }
 
 /* Examples (match old) */
 .command-example{
   color: var(--example-text);
-  font-size: .85rem;        /* old: .85rem */
-  margin: .2rem 0 0 2rem;   /* old inline margin */
-  font-family: 'Courier New', monospace;  /* old */
+  font-size: .85rem;        /* old */
+  margin: .2rem 0 0 2rem;   /* old */
+  font-family: 'Courier New', monospace; /* old */
   font-weight: 500;
 }
 .command-example > span{ font-weight: 700; }
@@ -98,13 +103,18 @@ h1::before{ content: "📖"; margin-right: .6rem; }
 }
 
 /* Footer (match old) */
-.footer{ margin-top: 1.5rem; text-align: center; color: var(--dark); font-size: .8rem; }
+.footer{
+  margin-top: 1.5rem;
+  text-align: center;
+  color: var(--dark);
+  font-size: .8rem;
+}
 
 /* PDF break handling */
 .avoid-break{ page-break-inside: avoid; }
 
-/* Print-specific tweaks (don’t change proportions) */
+/* Print-only cleanup (no scaling) */
 @media print{
-  html, body{ background:#fff; }
+  html, body{ background:#fff; padding: 0; }
   .container{ box-shadow:none; }
 }
