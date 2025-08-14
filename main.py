@@ -472,6 +472,7 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # Consultar pessoas na lista: p (all)
+        # /p — listar participantes: "Nome — +telefone" (ou só +telefone se sem nome)
         if cmd == "/p":
             group = get_user_group(phone)  # {"owner","list","instance",...}
 
@@ -491,17 +492,15 @@ async def whatsapp_webhook(request: Request):
                 name = (data.get("name") or "").strip()
                 phone_e164 = udoc.id  # ex.: +55119...
 
-                # Dono = quem tem role=admin nesta mesma listinha
                 is_owner = (grp.get("role") == "admin" and grp.get("owner") == group["owner"])
 
-                # Formato pedido: "Nome — +telefone" (ou só +telefone se sem nome)
-                display_name = name if name else phone_e164
-                line = f"{display_name} — {phone_e164}"
+                # se tem nome → "Nome — +telefone"; senão → "+telefone"
+                line = f"{name} — {phone_e164}" if name else f"{phone_e164}"
                 if is_owner:
                     line += " (Dono)"
 
-                # Ordena: Dono primeiro; depois por nome (fallback telefone)
-                sort_key = (0 if is_owner else 1, display_name.lower())
+                # Dono primeiro; depois ordena por nome (ou telefone se sem nome)
+                sort_key = (0 if is_owner else 1, (name or phone_e164).lower())
                 members.append((sort_key, line))
 
             members.sort(key=lambda t: t[0])
