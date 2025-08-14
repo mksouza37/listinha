@@ -6,13 +6,12 @@ from firebase import (
     remove_user_from_list, remove_self_from_list
 )
 from firebase_admin import firestore
-from twilio.rest import Client
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 import weasyprint
 import os
-import urllib.parse
+import requests
 from urllib.parse import quote
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
@@ -22,24 +21,30 @@ import pytz
 import phonenumbers
 from phonenumbers import NumberParseException
 from messages import *
-from fastapi.responses import PlainTextResponse
+
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
-PUBLIC_DISPLAY_NUMBER = os.getenv("PUBLIC_DISPLAY_NUMBER", "1 415-523-8886")
+PUBLIC_DISPLAY_NUMBER = os.getenv("PUBLIC_DISPLAY_NUMBER", "+55 11 91270-5543")  # your real number
 
-# Map WhatsApp service numbers to instance IDs
-NUMBER_MAP = {
-    "whatsapp:+551199999999": "instance_1",  # Replace with your real numbers
-    "whatsapp:+551188888888": "instance_2"
+# Map do seu número (phone_number_id da Meta) para a "instância" usada na sua lógica
+# Descubra o phone_number_id no painel do WhatsApp Business (Meta).
+
+_raw_map = {
+    os.getenv("META_PHONE_NUMBER_ID", ""): "instance_1",
+    os.getenv("META_PHONE_NUMBER_ID_2", ""): "instance_2",
 }
+NUMBER_MAP = {k: v for k, v in _raw_map.items() if k}
 
-# Twilio setup
-twilio_client = Client(
-    os.getenv("TWILIO_ACCOUNT_SID"),
-    os.getenv("TWILIO_AUTH_TOKEN")
-)
-TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
+# WhatsApp Cloud API (Meta)
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
+META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
+
+# Token de verificação para o GET do webhook (Meta)
+VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
+
 
 @app.get("/")
 def root():
@@ -80,27 +85,6 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
             return None
 
     return None  # Fallback for any failure
-
-VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
-
-@app.get("/meta-webhook")
-async def meta_verify(request: Request):
-    qp = request.query_params
-    mode = qp.get("hub.mode") or qp.get("mode") or ""
-    token = qp.get("hub.verify_token") or qp.get("verify_token") or ""
-    challenge = qp.get("hub.challenge") or qp.get("challenge") or ""
-
-    print(f"[META VERIFY] mode={mode} token={token} challenge={challenge}", flush=True)
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return PlainTextResponse(challenge)
-    return PlainTextResponse("Forbidden", status_code=403)
-
-@app.post("/meta-webhook")
-async def meta_receive(request: Request):
-    body = await request.json()
-    print("🌐 META WEBHOOK:", body, flush=True)
-    return {"status": "ok"}
 
 @app.get("/view")
 def unified_view(
@@ -189,310 +173,369 @@ def show_commands():
         html = f.read()
     return HTMLResponse(html)
 
+@app.get("/webhook")
+async def meta_verify(request: Request):
+    qp = request.query_params
+    mode = qp.get("hub.mode") or ""
+    token = qp.get("hub.verify_token") or ""
+    challenge = qp.get("hub.challenge") or ""
+
+    print(f"[META VERIFY] mode={mode} token={token} challenge={challenge}", flush=True)
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return PlainTextResponse(challenge)
+    return PlainTextResponse("Forbidden", status_code=403)
+
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
-    form = await request.form()
-    from_number = form.get("From")  # "whatsapp:+551199999999"
-    to_number = form.get("To")      # "whatsapp:+5511XXXXXXX" (our service number)
-    message = form.get("Body").strip()
+    """
+    Recebe mensagens do WhatsApp Cloud API (Meta).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        print("❌ Payload inválido (não-JSON) no /webhook")
+        return {"status": "ok"}
 
-    phone = from_number.replace("whatsapp:", "")
-    instance_id = NUMBER_MAP.get(to_number, "default")
+    # Estrutura Meta: entry[0].changes[0].value.messages[0]
+    try:
+        entry = (body.get("entry") or [])[0]
+        change = (entry.get("changes") or [])[0]
+        value = change.get("value") or {}
+        metadata = value.get("metadata") or {}
+        messages = value.get("messages") or []
 
-    print(f"📞 From: {from_number} (instance: {instance_id})")
-    print(f"📲 Message: {message}")
+        if not messages:
+            # Pode ser read/delivery/status etc. Não há texto para processar.
+            return {"status": "ok"}
 
-    # Normalize command format (always with "/")
-    parts = message.strip().split(maxsplit=1)
-    if parts:
-        cmd = "/" + parts[0].lower()
-        arg = parts[1] if len(parts) > 1 else ""
-    else:
-        cmd = "/"
-        arg = ""
+        msg = messages[0]
+        text = (msg.get("text") or {}).get("body", "")
+        wa_from = str(msg.get("from") or "").strip()  # ex.: "5511999999999" (sem +)
+        phone_number_id = str(metadata.get("phone_number_id") or "").strip()
 
-    # LISTINHA command
-    if cmd == "/listinha":
-        name = arg.strip()[:20] if arg else ""
+        # Normaliza formato de origem para seu código (mantém compatibilidade):
+        from_number = f"whatsapp:+{wa_from}" if wa_from else ""
+        # Resolve instance via phone_number_id
+        instance_id = NUMBER_MAP.get(phone_number_id, "default")
 
-        if user_in_list(phone):
-            send_message(from_number, ALREADY_IN_LIST)
+        print(f"📦 META IN: from={from_number} pid={phone_number_id} instance={instance_id}")
+        print(f"📲 Message: {text}")
+
+        # ===== A partir daqui, seu fluxo original =====
+        message = (text or "").strip()
+        parts = message.split(maxsplit=1)
+        if parts:
+            cmd = "/" + parts[0].lower()
+            arg = parts[1] if len(parts) > 1 else ""
         else:
-            create_new_list(phone, instance_id, name)
-            display_name = f"*{name}*" if name else phone
-            send_message(from_number, list_created(display_name))
+            cmd = "/"
+            arg = ""
 
-        return {"status": "ok"}
+        phone = from_number.replace("whatsapp:", "")
 
-    # Check if user exists before other commands
-    if not user_in_list(phone):
-        send_message(from_number, NOT_IN_LIST)
-        return {"status": "ok"}
+        # LISTINHA command
+        if cmd == "/listinha":
+            name = arg.strip()[:20] if arg else ""
 
-    # Add item to list (i <text>)
-    if cmd == "/i" and arg:
-        added = add_item(phone, arg)
-        if added:
-            #send_message(item_added_log(arg)
-            print(f"✅ Item adicionado: {arg}")
-        else:
-            send_message(from_number, item_already_exists(arg))
-        return {"status": "ok"}
+            if user_in_list(phone):
+                send_message(from_number, ALREADY_IN_LIST)
+            else:
+                create_new_list(phone, instance_id, name)
+                display_name = f"*{name}*" if name else phone
+                send_message(from_number, list_created(display_name))
 
-    # Delete item: a <item>
-    if cmd == "/a" and arg:
-        deleted = delete_item(phone, arg)
-        if deleted:
-            send_message(from_number, item_removed(arg))
-        else:
-            send_message(from_number, item_not_found(arg))
-        return {"status": "ok"}
-
-    # Add new user (u <phone> [name])
-    if cmd == "/u" and arg:
-
-        parts = arg.strip().split(maxsplit=1)
-        phone_part = parts[0]
-        name = parts[1].strip()[:20] if len(parts) > 1 else ""
-
-        target_phone = normalize_phone(phone_part, phone)
-        if not target_phone:
-            send_message(from_number, INVALID_NUMBER)
             return {"status": "ok"}
 
-        if not is_admin(phone):
-            send_message(from_number, NOT_ADMIN)
+        # Check if user exists before other commands
+        if not user_in_list(phone):
+            send_message(from_number, NOT_IN_LIST)
             return {"status": "ok"}
 
-        success, status = add_user_to_list(phone, target_phone, name=name)
-        if success:
-
-            send_message(from_number, guest_added(name, target_phone))
-
-            admin_data = firestore.client().collection("users").document(phone).get().to_dict()
-            admin_name = admin_data.get("name", "").strip()
-            admin_display_name = f"*{admin_name}*" if admin_name else phone
-
-            send_message(f"whatsapp:{target_phone}", WELCOME_MESSAGE(name, admin_display_name))
-
-        elif status == "already_in_list":
-            send_message(from_number, guest_already_in_other_list(target_phone))
-        return {"status": "ok"}
-
-    # Remove user (admin): e <phone>
-    if cmd == "/e" and arg:
-
-        target_phone = normalize_phone(arg, phone)
-        if not target_phone:
-            send_message(from_number, INVALID_NUMBER)
-            return {"status": "ok"}
-        if not is_admin(phone):
-            send_message(from_number, NOT_OWNER_CANNOT_REMOVE)
-            return {"status": "ok"}
-        if remove_user_from_list(phone, target_phone):
-            send_message(from_number, guest_removed("", target_phone))
-        else:
-            send_message(from_number, not_a_member(target_phone))
-        return {"status": "ok"}
-
-    # Self-remove: s <your phone>
-    if cmd == "/s":
-        if not arg:
-            send_message(from_number, SELF_EXIT_INSTRUCTION)
+        # Add item to list (i <text>)
+        if cmd == "/i" and arg:
+            added = add_item(phone, arg)
+            if added:
+                #send_message(item_added_log(arg)
+                print(f"✅ Item adicionado: {arg}")
+            else:
+                send_message(from_number, item_already_exists(arg))
             return {"status": "ok"}
 
-        target_phone = normalize_phone(arg, phone)
-        if not target_phone:
-            send_message(from_number, INVALID_NUMBER)
+        # Delete item: a <item>
+        if cmd == "/a" and arg:
+            deleted = delete_item(phone, arg)
+            if deleted:
+                send_message(from_number, item_removed(arg))
+            else:
+                send_message(from_number, item_not_found(arg))
             return {"status": "ok"}
 
-        if target_phone != phone:
-            send_message(from_number, INVALID_SELF_EXIT)
+        # Add new user (u <phone> [name])
+        if cmd == "/u" and arg:
+
+            parts = arg.strip().split(maxsplit=1)
+            phone_part = parts[0]
+            name = parts[1].strip()[:20] if len(parts) > 1 else ""
+
+            target_phone = normalize_phone(phone_part, phone)
+            if not target_phone:
+                send_message(from_number, INVALID_NUMBER)
+                return {"status": "ok"}
+
+            if not is_admin(phone):
+                send_message(from_number, NOT_ADMIN)
+                return {"status": "ok"}
+
+            success, status = add_user_to_list(phone, target_phone, name=name)
+            if success:
+
+                send_message(from_number, guest_added(name, target_phone))
+
+                admin_data = firestore.client().collection("users").document(phone).get().to_dict()
+                admin_name = admin_data.get("name", "").strip()
+                admin_display_name = f"*{admin_name}*" if admin_name else phone
+
+                send_message(f"whatsapp:{target_phone}", WELCOME_MESSAGE(name, admin_display_name))
+
+            elif status == "already_in_list":
+                send_message(from_number, guest_already_in_other_list(target_phone))
             return {"status": "ok"}
 
-        if remove_self_from_list(phone):
-            send_message(from_number, LEFT_LIST)
-        else:
-            send_message(from_number, CANNOT_EXIT_AS_ADMIN)
-        return {"status": "ok"}
+        # Remove user (admin): e <phone>
+        if cmd == "/e" and arg:
 
-    # Transfer admin role: t <phone>
-    if cmd == "/t" and arg:
-
-        target_phone = normalize_phone(arg, phone)
-        if not target_phone:
-            send_message(from_number, INVALID_NUMBER)
-            return {"status": "ok"}
-        if not is_admin(phone):
-            send_message(from_number, NOT_OWNER_CANNOT_TRANSFER)
-            return {"status": "ok"}
-        if propose_admin_transfer(phone, target_phone):
-            send_message(from_number, transfer_proposed(target_phone))
-            send_message(f"whatsapp:{target_phone}", TRANSFER_RECEIVED)
-        else:
-            send_message(from_number, not_a_guest(target_phone))
-        return {"status": "ok"}
-
-    # Accept admin role: o
-    if cmd == "/o":
-        result = accept_admin_transfer(phone)
-        if result:
-            from_phone = result["from"]  # now returns a dict instead of just True
-            send_message(from_number, TRANSFER_ACCEPTED)
-            send_message(from_phone, TRANSFER_PREVIOUS_OWNER)
-        else:
-            send_message(from_number, NO_PENDING_TRANSFER)
-        return {"status": "ok"}
-
-    # Admin can define custom list title: b <title>
-    if cmd == "/b" and arg:
-        if not is_admin(phone):
-            send_message(from_number, NOT_OWNER_CANNOT_RENAME)
+            target_phone = normalize_phone(arg, phone)
+            if not target_phone:
+                send_message(from_number, INVALID_NUMBER)
+                return {"status": "ok"}
+            if not is_admin(phone):
+                send_message(from_number, NOT_OWNER_CANNOT_REMOVE)
+                return {"status": "ok"}
+            if remove_user_from_list(phone, target_phone):
+                send_message(from_number, guest_removed("", target_phone))
+            else:
+                send_message(from_number, not_a_member(target_phone))
             return {"status": "ok"}
 
-        group = get_user_group(phone)
-        doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-        ref = firestore.client().collection("listas").document(doc_id)
-        ref.update({"title": arg.strip().capitalize()})
-        send_message(from_number, list_title_updated(arg.strip().capitalize()))
-        return {"status": "ok"}
+        # Self-remove: s <your phone>
+        if cmd == "/s":
+            if not arg:
+                send_message(from_number, SELF_EXIT_INSTRUCTION)
+                return {"status": "ok"}
 
-    # Menu
-    MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções", "/?"}  # removed ajuda/help
-    if cmd in MENU_ALIASES:
-        send_message(from_number, MENU_TEXT)
-        return {"status": "ok"}
+            target_phone = normalize_phone(arg, phone)
+            if not target_phone:
+                send_message(from_number, INVALID_NUMBER)
+                return {"status": "ok"}
 
-    # Help text
-    HELP_ALIASES = {"/h", "/ajuda", "/help"}
-    if cmd in HELP_ALIASES:
-        send_message(from_number, HELP_TEXT)
-        return {"status": "ok"}
+            if target_phone != phone:
+                send_message(from_number, INVALID_SELF_EXIT)
+                return {"status": "ok"}
 
-    # Consultar pessoas na lista: p (all)
-    if cmd == "/p":
-        group = get_user_group(phone)
+            if remove_self_from_list(phone):
+                send_message(from_number, LEFT_LIST)
+            else:
+                send_message(from_number, CANNOT_EXIT_AS_ADMIN)
+            return {"status": "ok"}
 
-        users_ref = firestore.client().collection("users")
-        same_list_users = users_ref \
-            .filter(field_path="group.owner", op_string="==", value=group["owner"]) \
-            .filter(field_path="group.list", op_string="==", value=group["list"]) \
-            .filter(field_path="group.instance", op_string="==", value=group["instance"]) \
-            .stream()
+        # Transfer admin role: t <phone>
+        if cmd == "/t" and arg:
 
-        members_display = []
-        for doc in same_list_users:
-            data = doc.to_dict()
-            group_data = data.get("group", {})
-            role = "Dono" if group_data.get("owner") == group["owner"] and group_data.get(
-                "role") == "admin" else "Convidado"
-            name = data.get("name", "")
-            entry = f"{doc.id} ({role})"
-            if name:
-                entry += f" — {name}"
-            members_display.append(entry)
+            target_phone = normalize_phone(arg, phone)
+            if not target_phone:
+                send_message(from_number, INVALID_NUMBER)
+                return {"status": "ok"}
+            if not is_admin(phone):
+                send_message(from_number, NOT_OWNER_CANNOT_TRANSFER)
+                return {"status": "ok"}
+            if propose_admin_transfer(phone, target_phone):
+                send_message(from_number, transfer_proposed(target_phone))
+                send_message(f"whatsapp:{target_phone}", TRANSFER_RECEIVED)
+            else:
+                send_message(from_number, not_a_guest(target_phone))
+            return {"status": "ok"}
 
-        # Sort: admin first
-        members_display.sort(key=lambda x: "(admin)" not in x)
+        # Accept admin role: o
+        if cmd == "/o":
+            result = accept_admin_transfer(phone)
+            if result:
+                from_phone = result["from"]  # now returns a dict instead of just True
+                send_message(from_number, TRANSFER_ACCEPTED)
+                send_message(from_phone, TRANSFER_PREVIOUS_OWNER)
+            else:
+                send_message(from_number, NO_PENDING_TRANSFER)
+            return {"status": "ok"}
 
-        send_message(from_number, list_members(members_display))
-        return {"status": "ok"}
+        # Admin can define custom list title: b <title>
+        if cmd == "/b" and arg:
+            if not is_admin(phone):
+                send_message(from_number, NOT_OWNER_CANNOT_RENAME)
+                return {"status": "ok"}
 
-    # View list
-    if cmd == "/v":
-        raw_items = get_items(phone)
+            group = get_user_group(phone)
+            doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+            ref = firestore.client().collection("listas").document(doc_id)
+            ref.update({"title": arg.strip().capitalize()})
+            send_message(from_number, list_title_updated(arg.strip().capitalize()))
+            return {"status": "ok"}
 
-        # Support both dict-style and legacy string-style items
-        items = [
-            entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
-            for entry in raw_items
-        ]
+        # Menu
+        MENU_ALIASES = {"/m", "/menu", "/instruções", "/opções", "/?"}  # removed ajuda/help
+        if cmd in MENU_ALIASES:
+            send_message(from_number, MENU_TEXT)
+            return {"status": "ok"}
 
-        group = get_user_group(phone)
-        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-        doc_id = quote(raw_doc_id, safe="")
+        # Help text
+        HELP_ALIASES = {"/h", "/ajuda", "/help"}
+        if cmd in HELP_ALIASES:
+            send_message(from_number, HELP_TEXT)
+            return {"status": "ok"}
 
-        # Get title from list document
-        ref = firestore.client().collection("listas").document(raw_doc_id)
-        doc = ref.get()
-        title = doc.to_dict().get("title", "Sua Listinha") if doc.exists else "Sua Listinha"
+        # Consultar pessoas na lista: p (all)
+        if cmd == "/p":
+            group = get_user_group(phone)
 
-        if len(items) > 20:
-            html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
-            send_message(from_number, list_download_pdf(title, len(items), html_url))
-        else:
-            send_message(from_number, list_shown(title, items))
+            users_ref = firestore.client().collection("users")
+            same_list_users = users_ref \
+                .filter(field_path="group.owner", op_string="==", value=group["owner"]) \
+                .filter(field_path="group.list", op_string="==", value=group["list"]) \
+                .filter(field_path="group.instance", op_string="==", value=group["instance"]) \
+                .stream()
 
-        return {"status": "ok"}
+            members_display = []
+            for doc in same_list_users:
+                data = doc.to_dict()
+                group_data = data.get("group", {})
+                role = "Dono" if group_data.get("owner") == group["owner"] and group_data.get(
+                    "role") == "admin" else "Convidado"
+                name = data.get("name", "")
+                entry = f"{doc.id} ({role})"
+                if name:
+                    entry += f" — {name}"
+                members_display.append(entry)
 
-    # Download PDF: d
-    if cmd == "/d":
-        group = get_user_group(phone)
-        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-        doc_id = quote(raw_doc_id, safe="")
+            # Sort: admin first
+            members_display.sort(key=lambda x: "(admin)" not in x)
 
-        # Optional: check if list has items
-        ref = firestore.client().collection("listas").document(raw_doc_id)
-        doc = ref.get()
-        count = len(doc.to_dict().get("itens", [])) if doc.exists else 0
+            send_message(from_number, list_members(members_display))
+            return {"status": "ok"}
 
-        if count == 0:
-            send_message(from_number, LIST_EMPTY_PDF)
-        else:
+        # View list
+        if cmd == "/v":
+            raw_items = get_items(phone)
+
+            # Support both dict-style and legacy string-style items
+            items = [
+                entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
+                for entry in raw_items
+            ]
+
+            group = get_user_group(phone)
+            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+            doc_id = quote(raw_doc_id, safe="")
+
+            # Get title from list document
+            ref = firestore.client().collection("listas").document(raw_doc_id)
+            doc = ref.get()
+            title = doc.to_dict().get("title", "Sua Listinha") if doc.exists else "Sua Listinha"
+
+            if len(items) > 20:
+                html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
+                send_message(from_number, list_download_pdf(title, len(items), html_url))
+            else:
+                send_message(from_number, list_shown(title, items))
+
+            return {"status": "ok"}
+
+        # Download PDF: d
+        if cmd == "/d":
+            group = get_user_group(phone)
+            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+            doc_id = quote(raw_doc_id, safe="")
+
+            # Optional: check if list has items
+            ref = firestore.client().collection("listas").document(raw_doc_id)
+            doc = ref.get()
+            count = len(doc.to_dict().get("itens", [])) if doc.exists else 0
+
+            if count == 0:
+                send_message(from_number, LIST_EMPTY_PDF)
+            else:
+                timestamp = int(time.time())
+                pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&&t={timestamp}"
+                send_message(from_number, list_download_url(pdf_url))
+
+            return {"status": "ok"}
+
+        # Comando /x – PDF com colunas (produto, usuário, hora)
+        if cmd == "/x":
+            group = get_user_group(phone)
+            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+            doc_id = quote(raw_doc_id, safe="")
             timestamp = int(time.time())
-            pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&&t={timestamp}"
-            send_message(from_number, list_download_url(pdf_url))
 
-        return {"status": "ok"}
-
-    # Comando /x – PDF com colunas (produto, usuário, hora)
-    if cmd == "/x":
-        group = get_user_group(phone)
-        raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-        doc_id = quote(raw_doc_id, safe="")
-        timestamp = int(time.time())
-
-        pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&mode=vc&footer=true&t={timestamp}"
-        send_message(from_number, list_detailed_url(pdf_url))
-        return {"status": "ok"}
-
-    # Clear all items: l (admin only)
-    if cmd == "/l":
-        if not is_admin(phone):
-            send_message(from_number, NOT_OWNER_CANNOT_CLEAR)
+            pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&mode=vc&footer=true&t={timestamp}"
+            send_message(from_number, list_detailed_url(pdf_url))
             return {"status": "ok"}
 
-        clear_items(phone)
-        send_message(from_number, LIST_CLEARED)
+        # Clear all items: l (admin only)
+        if cmd == "/l":
+            if not is_admin(phone):
+                send_message(from_number, NOT_OWNER_CANNOT_CLEAR)
+                return {"status": "ok"}
+
+            clear_items(phone)
+            send_message(from_number, LIST_CLEARED)
+            return {"status": "ok"}
+
+        if cmd == "/z":
+            # 1) Instruction message
+            send_message(from_number, z_step1_instructions())
+
+            # 2) Ready-to-copy message
+            full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
+            send_message(from_number, full_text)
+
+            return {"status": "ok"}
+
+        # ✅ Fallback for unknown commands
+        send_message(from_number, UNKNOWN_COMMAND)
         return {"status": "ok"}
 
-    if cmd == "/z":
-        # 1) Instruction message
-        send_message(from_number, z_step1_instructions())
-
-        # 2) Ready-to-copy message
-        full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
-        send_message(from_number, full_text)
-
+    except Exception as e:
+        print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
-
-    # ✅ Fallback for unknown commands
-    send_message(from_number, UNKNOWN_COMMAND)
-    return {"status": "ok"}
 
 def send_message(to, body):
+    """
+    Envia mensagem de texto via WhatsApp Cloud API (Meta).
+    Aceita 'to' como "whatsapp:+55119..." ou "+55119..." ou "55119...".
+    """
     try:
-        print(f"📤 Sending to: {to}")
-        print(f"📨 Message body: {body}")
-        message = twilio_client.messages.create(
-            from_=f"whatsapp:{TWILIO_NUMBER}",
-            to=to,
-            body=body
-        )
-        print(f"✅ Message sent successfully. SID: {message.sid}")
+        to_norm = (to or "").replace("whatsapp:", "").strip()
+        if to_norm.startswith("+"):
+            to_norm = to_norm[1:]
+
+        url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_norm,
+            "type": "text",
+            "text": {"body": body[:4096]}  # pequeno limite de segurança
+        }
+        print(f"📤 META OUT → to=+{to_norm} chars={len(body)}")
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        r.raise_for_status()
+        resp = r.json()
+        msg_id = (resp.get("messages") or [{}])[0].get("id")
+        print(f"✅ Enviado via Meta. id={msg_id}")
     except Exception as e:
-        print("❌ Error sending message via Twilio:")
-        print(str(e))
+        print("❌ Erro ao enviar via Meta:", str(e))
 
 def get_items_from_doc_id(doc_id):
     ref = firestore.client().collection("listas").document(doc_id)
