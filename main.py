@@ -472,7 +472,6 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # Consultar pessoas na lista: p (all)
-
         if cmd == "/p":
             group = get_user_group(phone)  # {"owner","list","instance",...}
 
@@ -489,23 +488,24 @@ async def whatsapp_webhook(request: Request):
             for udoc in same_list_users:
                 data = udoc.to_dict() or {}
                 grp = data.get("group", {})
-                is_admin = (grp.get("role") == "admin") and (grp.get("owner") == group["owner"])
-
                 name = (data.get("name") or "").strip()
-                phone_e164 = udoc.id  # ex.: +5511999999999
+                phone_e164 = udoc.id  # ex.: +55119...
 
-                # Display: "Nome — +telefone" (or just +telefone if sem nome)
-                display = f"{name} — {phone_e164}" if name else phone_e164
-                if is_admin:
-                    display += " (Dono)"
+                # Dono = quem tem role=admin nesta mesma listinha
+                is_owner = (grp.get("role") == "admin" and grp.get("owner") == group["owner"])
 
-                # Sort key: Dono primeiro; depois por nome (ou telefone)
-                sort_key = (0 if is_admin else 1, (name or phone_e164).lower())
-                members.append((sort_key, display))
+                # Formato pedido: "Nome — +telefone" (ou só +telefone se sem nome)
+                display_name = name if name else phone_e164
+                line = f"{display_name} — {phone_e164}"
+                if is_owner:
+                    line += " (Dono)"
 
-            # ordena e extrai o texto final
+                # Ordena: Dono primeiro; depois por nome (fallback telefone)
+                sort_key = (0 if is_owner else 1, display_name.lower())
+                members.append((sort_key, line))
+
             members.sort(key=lambda t: t[0])
-            member_lines = [d for _, d in members]
+            member_lines = [line for _, line in members]
 
             send_message(from_number, list_members(member_lines))
             return {"status": "ok"}
