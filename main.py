@@ -88,14 +88,12 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 
 @app.get("/view")
 def unified_view(
-    request: Request,                          # needed so WeasyPrint can resolve /static/*
     g: str,
-    format: str = Query("html"),               # "html" or "pdf"
+    format: str = Query("html"),               # "html" ou "pdf"
     footer: str = Query("false"),
     download: str = Query("false"),
-    mode: str = Query("normal")                # "normal" or "vc" (detalhada: produto/quem/quando)
+    mode: str = Query("normal")                # "normal" ou "vc"
 ):
-    # Fetch list doc
     ref = firestore.client().collection("listas").document(g)
     doc = ref.get()
     if not doc.exists:
@@ -104,23 +102,18 @@ def unified_view(
     data = doc.to_dict()
     title = data.get("title", "Sua Listinha")
 
-    # Footer timestamp (optional)
     show_footer = footer.lower() == "true"
     sao_paulo = pytz.timezone("America/Sao_Paulo")
-    updated_at = (
-        datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M")
-        if show_footer else ""
-    )
+    updated_at = datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
 
-    # Build items depending on mode
+    # Modo detalhado (vc): item + quem + quando (mostra NOME; se vazio, cai no telefone)
     if mode == "vc":
-        # Expect g = "<instance>__<owner>__<list>"
         try:
             instance_id, owner, list_name = g.split("__")
         except ValueError:
             return HTMLResponse("❌ ID de documento inválido.")
 
-        # Resolve phone→display name map for users in the same list
+        # Busca todos os usuários da mesma listinha
         users_ref = firestore.client().collection("users")
         same_list_users = (
             users_ref
@@ -129,61 +122,110 @@ def unified_view(
             .where("group.instance", "==", instance_id)
             .stream()
         )
-        phone_name_map = {
-            u.id: (u.to_dict().get("name", "") or "").strip() or u.id
-            for u in same_list_users
-        }
 
-        items = [
-            {
-                "item": i["item"],
-                "user": phone_name_map.get(i["user"], i["user"]),
-                "timestamp": i["timestamp"],
-            }
-            for i in data.get("itens", [])
-            if isinstance(i, dict) and all(k in i for k in ("item", "user", "timestamp"))
-        ]
+        # Mapeia várias variantes do telefone → nome
+        phone_name_map = {}
+        for udoc in same_list_users:
+            data_u = udoc.to_dict() or {}
+            name = (data_u.get("name") or "").strip()
+            if not name:
+                continue  # sem nome, não ajuda no display
+
+            raw = (udoc.id or "").strip()  # ex.: "+5511999999999"
+            variants = set()
+            if raw:
+                variants.add(raw)
+                # sem '+'
+                if raw.startswith("+"):
+                    variants.add(raw[1:])
+                else:
+                    variants.add("+" + raw)
+                # com "whatsapp:"
+                variants.add("whatsapp:" + raw)
+                if raw.startswith("+"):
+                    variants.add("whatsapp:" + raw[1:])
+                else:
+                    variants.add("whatsapp:+" + raw)
+                # só dígitos (para normalizações agressivas)
+                digits = "".join(ch for ch in raw if ch.isdigit())
+                if digits:
+                    variants.add(digits)
+                    variants.add("+" + digits)
+                    variants.add("whatsapp:" + digits)
+                    variants.add("whatsapp:+" + digits)
+
+            for v in variants:
+                phone_name_map[v] = name
+
+        def resolve_user_display(u: str) -> str:
+            """Retorna nome se existir; caso contrário, devolve o próprio telefone."""
+            u = (u or "").strip()
+            if not u:
+                return u
+            if u in phone_name_map:
+                return phone_name_map[u]
+            # tenta variações na hora do lookup
+            cand = set()
+            cand.add(u.replace("whatsapp:", ""))
+            if u.startswith("whatsapp:+"):
+                cand.add(u.replace("whatsapp:+", "+"))
+            elif u.startswith("whatsapp:"):
+                cand.add("+" + u.split("whatsapp:", 1)[1])
+            if u.startswith("+"):
+                cand.add(u[1:])
+            else:
+                cand.add("+" + u)
+            digits = "".join(ch for ch in u if ch.isdigit())
+            if digits:
+                cand.update({digits, "+" + digits, "whatsapp:" + digits, "whatsapp:+" + digits})
+            for c in cand:
+                if c in phone_name_map:
+                    return phone_name_map[c]
+            return u  # fallback: mostra telefone
+
+        # Monta itens com nome (ou telefone se não houver nome)
+        items = []
+        for i in data.get("itens", []):
+            if not (isinstance(i, dict) and all(k in i for k in ("item", "user", "timestamp"))):
+                continue
+            display_user = resolve_user_display(i["user"])
+            items.append(
+                {"item": i["item"], "user": display_user, "timestamp": i["timestamp"]}
+            )
+
+        html_content = render_list_page(
+            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc"
+        )
+
+
     else:
-        # Normal (bullet) list — keep original order by locale sort if you use it elsewhere
-        raw = data.get("itens", [])
-        items = [i for i in raw if isinstance(i, dict) and "item" in i]
+        # Modo normal (bullet list)
+        items = sorted(
+            [i for i in data.get("itens", []) if isinstance(i, dict) and "item" in i],
+            key=lambda x: collator.getSortKey(x["item"])
+        )
 
-    # Render HTML via your existing Jinja template
-    html_content = render_list_page(
-        g,
-        items,
-        title=title,
-        updated_at=updated_at,
-        show_footer=show_footer,
-        mode=mode,
-    )
+        html_content = render_list_page(
+            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal"
+        )
 
-    # ===== PDF output (WeasyPrint + shared /static/pdf.css) =====
+    # PDF output
     if format == "pdf":
-        html = weasyprint.HTML(string=html_content, base_url=str(request.base_url))
-        css_path = os.path.join("static", "pdf.css")
-        pdf = html.write_pdf(stylesheets=[weasyprint.CSS(filename=css_path)])
+        pdf = weasyprint.HTML(string=html_content).write_pdf()
         return Response(
             content=pdf,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": (
-                    "attachment; filename=listinha_%s.pdf" % quote(g, safe="")
-                    if download.lower() == "true"
-                    else "inline; filename=listinha_%s.pdf" % quote(g, safe="")
-                ),
+                "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
                 "Expires": "0",
             },
         )
 
-    # ===== HTML output (load the same pdf.css for on-screen consistency) =====
-    # Cache-bust the CSS link so WhatsApp "open in browser" doesn't show an old cached style.
-    css_tag = f'<link rel="stylesheet" href="/static/pdf.css?v={int(datetime.now().timestamp())}">'
-    html_with_css = f"{css_tag}\n{html_content}"
+    # HTML output
     return Response(
-        content=html_with_css,
+        content=html_content,
         media_type="text/html",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -432,7 +474,7 @@ async def whatsapp_webhook(request: Request):
         # Consultar pessoas na lista: p (all)
 
         if cmd == "/p":
-            group = get_user_group(phone)  # {"owner", "list", "instance", "role", ...}
+            group = get_user_group(phone)  # {"owner","list","instance",...}
 
             users_ref = firestore.client().collection("users")
             same_list_users = (
@@ -444,19 +486,26 @@ async def whatsapp_webhook(request: Request):
             )
 
             members = []
-            for doc in same_list_users:
-                data = doc.to_dict() or {}
+            for udoc in same_list_users:
+                data = udoc.to_dict() or {}
                 grp = data.get("group", {})
                 is_admin = (grp.get("role") == "admin") and (grp.get("owner") == group["owner"])
-                role = "Dono" if is_admin else "Convidado"
+
                 name = (data.get("name") or "").strip()
+                phone_e164 = udoc.id  # ex.: +5511999999999
 
-                # tuple for stable sort: (0 for Dono, 1 for Convidado), then by display text
-                display = f"{doc.id} ({role})" + (f" — {name}" if name else "")
-                members.append((0 if is_admin else 1, display.lower(), display))
+                # Display: "Nome — +telefone" (or just +telefone if sem nome)
+                display = f"{name} — {phone_e164}" if name else phone_e164
+                if is_admin:
+                    display += " (Dono)"
 
-            members.sort(key=lambda t: (t[0], t[1]))
-            member_lines = [m[2] for m in members]
+                # Sort key: Dono primeiro; depois por nome (ou telefone)
+                sort_key = (0 if is_admin else 1, (name or phone_e164).lower())
+                members.append((sort_key, display))
+
+            # ordena e extrai o texto final
+            members.sort(key=lambda t: t[0])
+            member_lines = [d for _, d in members]
 
             send_message(from_number, list_members(member_lines))
             return {"status": "ok"}
