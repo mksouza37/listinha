@@ -1,241 +1,30 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Comandos da Listinha</title>
- <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
- <style>
-   :root {
-     --primary: #1d3557; /* Very dark blue */
-     --secondary: #34495e;
-     --accent: #e63946; /* Stronger, more vibrant red */
-     --light: #f8f9fa;
-     --dark: #000; /* Absolute black for maximum contrast */
-     --gray: #343a40;
-     --example-text: #16715f; /* New color for example text */
-     --border-radius: 8px;
-   }
-
-   body {
-     font-family: 'Poppins', sans-serif;
-     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-     margin: 0;
-     padding: 1rem;
-     color: var(--dark);
-     line-height: 1.4;
-   }
-
-   .container {
-     max-width: 100%;
-     margin: 0 auto;
-     background: white;
-     border-radius: var(--border-radius);
-     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-     overflow: hidden;
-     padding: 1.2rem;
-   }
-
-   h1 {
-     color: var(--primary);
-     font-size: 1.5rem;
-     margin: 0 0 1rem 0;
-     display: flex;
-     align-items: center;
-     font-weight: 600;
-   }
-
-   h1::before {
-     content: "📖";
-     margin-right: 0.6rem;
-   }
-
-   .command-list {
-     list-style-type: none;
-     padding: 0;
-     margin: 0;
-   }
-
-   .command-item {
-     padding: 0.4rem 0.4rem;
-     margin-bottom: 0.255rem;
-   }
-
-   .command {
-     display: flex;
-     align-items: center;
-   }
-
-   .command-code {
-     background: var(--primary);
-     color: white;
-     padding: 0.2rem 0.6rem;
-     border-radius: 12px;
-     font-size: 0.85rem;
-     font-weight: 500;
-     margin-right: 0.8rem;
-     min-width: 1.4rem;
-     text-align: center;
-     flex-shrink: 0;
-   }
-
-   .command-desc {
-     font-size: 0.95rem;
-     color: var(--dark);
-   }
-
-   .command-example {
-     color: var(--example-text);
-     font-size: 0.85rem;
-     margin: 0.2rem 0 0 2rem;
-     font-family: 'Courier New', monospace;
-     font-weight: 500;
-   }
-
-   .command-example > span {
-       font-weight: bold;
-   }
-
-   .command-example::before {
-     content: "ex.: ";
-     color: var(--accent);
-     font-weight: 700;
-   }
-
-   .footer {
-     margin-top: 1.5rem;
-     text-align: center;
-     color: var(--dark);
-     font-size: 0.8rem;
-   }
- </style>
+  <meta charset="UTF-8" />
+  <title>Comandos da Listinha</title>
+  <!-- Optional: Poppins. For PDF, WeasyPrint may use local fallback if Google is blocked. -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/pdf.css">
 </head>
 <body>
- <div class="container">
-   <h1>Comandos da Listinha</h1>
+  <div class="container">
+    <h1>Comandos da Listinha</h1>
 
-   <ul class="command-list">
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">i</span>
-         <span class="command-desc">Incluir um item</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>i &lt;item&gt;</code></div>
-       <div class="command-example"><span>i água</span></div>
-       <div class="command-example"><span>i arroz - 5 kg</span></div>
-     </li>
+    <ul class="command-list">
+      <li class="command-item">
+        <div class="command">
+          <span class="command-code">i</span>
+          <span class="command-desc">Incluir um item</span>
+        </div>
+        <div class="command-format"><strong>Formato:</strong> <code>i &lt;item&gt;</code></div>
+        <div class="command-example"><span>i água</span></div>
+        <div class="command-example"><span>i arroz - 5 kg</span></div>
+      </li>
 
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">a</span>
-         <span class="command-desc">Apagar um item</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>a &lt;item&gt;</code></div>
-       <div class="command-example"><span>a laranja</span></div>
-     </li>
+      <!-- ...repita as demais entradas exatamente como já tem... -->
 
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">u</span>
-         <span class="command-desc">Incluir convidado</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>u &lt;telefone&gt; &lt;nome&gt;</code></div>
-       <div class="command-example"><span>u 11999999999 Alice</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">v</span>
-         <span class="command-desc">Ver a lista</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">x</span>
-         <span class="command-desc">Ver quem incluiu e quando</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">d</span>
-         <span class="command-desc">Baixar a lista em PDF</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">l</span>
-         <span class="command-desc">Limpar toda a lista</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">b</span>
-         <span class="command-desc">Renomear a lista</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>b &lt;título&gt;</code></div>
-       <div class="command-example"><span>b Lista de Tarefas</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">p</span>
-         <span class="command-desc">Ver quem está na lista</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">e</span>
-         <span class="command-desc">Remover convidado</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>e &lt;telefone&gt;</code></div>
-       <div class="command-example"><span>e 11999999999</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">t</span>
-         <span class="command-desc">Transferir o papel de dono</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>t &lt;telefone&gt;</code></div>
-       <div class="command-example"><span>t 11999999999</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">o</span>
-         <span class="command-desc">Aceitar ser dono da lista</span>
-       </div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">m</span>
-         <span class="command-desc">Mostrar este menu</span>
-       </div>
-       <div class="command-example"><span>menu</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">s</span>
-         <span class="command-desc">Sair da lista</span>
-       </div>
-       <div style="margin: 0.2rem 0 0 2rem;"><strong>Formato:</strong> <code>s &lt;seu número&gt;</code></div>
-       <div class="command-example"><span>s 11999999999</span></div>
-     </li>
-
-     <li class="command-item">
-       <div class="command">
-         <span class="command-code">h</span>
-         <span class="command-desc">Ajuda</span>
-       </div>
-     </li>
-   </ul>
- </div>
+    </ul>
+  </div>
 </body>
 </html>

@@ -88,6 +88,7 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 
 @app.get("/view")
 def unified_view(
+    request: Request,                          # 👈 added so base_url works for WeasyPrint/links
     g: str,
     format: str = Query("html"),               # "html" ou "pdf"
     footer: str = Query("false"),
@@ -106,15 +107,14 @@ def unified_view(
     sao_paulo = pytz.timezone("America/Sao_Paulo")
     updated_at = datetime.now(sao_paulo).strftime("Atualizado em: %d/%m/%Y às %H:%M") if show_footer else ""
 
-    # Novo modo: vc → lista com colunas
+    # Modo detalhado (vc): produto + quem incluiu + quando
     if mode == "vc":
-        # Extrair partes do doc_id
         try:
             instance_id, owner, list_name = g.split("__")
         except ValueError:
             return HTMLResponse("❌ ID de documento inválido.")
 
-        # 🔧 FIX: Firestore Python SDK usa .where(...), não .filter(...)
+        # ✅ Firestore Python SDK usa .where(...), não .filter(...)
         users_ref = firestore.client().collection("users")
         same_list_users = (
             users_ref
@@ -125,11 +125,10 @@ def unified_view(
         )
 
         phone_name_map = {
-            doc.id: doc.to_dict().get("name", "").strip() or doc.id
+            doc.id: (doc.to_dict().get("name", "") or "").strip() or doc.id
             for doc in same_list_users
         }
 
-        # Montar lista com nome + timestamp
         items = [
             {
                 "item": i["item"],
@@ -155,9 +154,11 @@ def unified_view(
             g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal"
         )
 
-    # PDF output
+    # ===== PDF output (with shared CSS) =====
     if format == "pdf":
-        pdf = weasyprint.HTML(string=html_content).write_pdf()
+        html = weasyprint.HTML(string=html_content, base_url=str(request.base_url))
+        css_path = os.path.join("static", "pdf.css")
+        pdf = html.write_pdf(stylesheets=[weasyprint.CSS(filename=css_path)])
         return Response(
             content=pdf,
             media_type="application/pdf",
@@ -169,7 +170,8 @@ def unified_view(
             },
         )
 
-    # HTML output
+    # ===== HTML output (apply same CSS — item 4) =====
+    html_content = f'<link rel="stylesheet" href="/static/pdf.css">\n{html_content}'
     return Response(
         content=html_content,
         media_type="text/html",

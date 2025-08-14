@@ -1,0 +1,98 @@
+/* ====== Page & Print ====== */
+@page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+
+:root {
+  --primary:#1d3557;
+  --secondary:#34495e;
+  --accent:#e63946;
+  --light:#f8f9fa;
+  --dark:#000;
+  --gray:#343a40;
+  --example-text:#16715f;
+  --border-radius:8px;
+}
+
+/* WeasyPrint handles gradients; add a solid fallback just in case */
+html, body {
+  font-family: system-ui, -apple-system, "Poppins", "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 12.5pt;
+  line-height: 1.45;
+  color: var(--dark);
+  margin: 0;
+  padding: 0;
+  background: #f5f7fa;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+/* ====== Generic Elements ====== */
+h1, h2, h3 { margin: 0 0 12pt; font-weight: 600; color: var(--primary); }
+h1 { font-size: 18pt; display:flex; align-items:center; }
+h1::before { content: "📖"; margin-right: 8px; }
+
+p { margin: 0 0 10pt; }
+small.muted { color:#666; }
+
+code {
+  background: #eef1f5;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  font-size: 0.95em;
+}
+
+/* ====== Layout Containers ====== */
+.container {
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  overflow: hidden;
+  padding: 16px 18px;
+}
+
+/* ====== Command List Styles (from comandos.html) ====== */
+.command-list { list-style: none; padding: 0; margin: 0; }
+.command-item { padding: 6px 8px; margin-bottom: 4px; }
+.command { display: flex; align-items: center; }
+
+.command-code {
+  background: var(--primary);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-right: 10px;
+  min-width: 1.4rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.command-desc { font-size: 0.95rem; color: var(--dark); }
+
+.command-example {
+  color: var(--example-text);
+  font-size: 0.9rem;
+  margin: 3px 0 0 32px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  font-weight: 500;
+}
+.command-example > span { font-weight: 700; }
+.command-example::before {
+  content: "ex.: ";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* inline “Formato:” helper blocks sometimes used under items */
+.command-format {
+  margin: 4px 0 0 32px;
+  font-size: 0.9rem;
+}
+
+/* ====== Footer ====== */
+.footer { margin-top: 14px; text-align: center; color: var(--dark); font-size: 0.85rem; }
+
+/* ====== PDF break handling ====== */
+.avoid-break { page-break-inside: avoid; }
