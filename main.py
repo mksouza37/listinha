@@ -90,9 +90,8 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 def unified_view(
     g: str,
     format: str = Query("html"),               # "html" ou "pdf"
-    footer: str = Query("false"),              # "true" ou "false"
-    download: str = Query("false"),            # força download do PDF
-    t: str = "",                               # usado para cache busting
+    footer: str = Query("false"),
+    download: str = Query("false"),
     mode: str = Query("normal")                # "normal" ou "vc"
 ):
     ref = firestore.client().collection("listas").document(g)
@@ -115,13 +114,15 @@ def unified_view(
         except ValueError:
             return HTMLResponse("❌ ID de documento inválido.")
 
-        # Buscar nomes dos usuários
+        # 🔧 FIX: Firestore Python SDK usa .where(...), não .filter(...)
         users_ref = firestore.client().collection("users")
-        same_list_users = users_ref \
-            .filter(field_path="group.owner", op_string="==", value=owner) \
-            .filter(field_path="group.list", op_string="==", value=list_name) \
-            .filter(field_path="group.instance", op_string="==", value=instance_id) \
+        same_list_users = (
+            users_ref
+            .where("group.owner", "==", owner)
+            .where("group.list", "==", list_name)
+            .where("group.instance", "==", instance_id)
             .stream()
+        )
 
         phone_name_map = {
             doc.id: doc.to_dict().get("name", "").strip() or doc.id
@@ -139,7 +140,9 @@ def unified_view(
             if isinstance(i, dict) and all(k in i for k in ("item", "user", "timestamp"))
         ]
 
-        html_content = render_list_page(g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc")
+        html_content = render_list_page(
+            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc"
+        )
 
     else:
         # Modo normal (bullet list)
@@ -148,24 +151,34 @@ def unified_view(
             key=lambda x: collator.getSortKey(x["item"])
         )
 
-        html_content = render_list_page(g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal")
+        html_content = render_list_page(
+            g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="normal"
+        )
 
     # PDF output
     if format == "pdf":
         pdf = weasyprint.HTML(string=html_content).write_pdf()
-        return Response(content=pdf, media_type="application/pdf", headers={
-            "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        })
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"{'attachment' if download == 'true' else 'inline'}; filename=listinha_{g}.pdf",
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     # HTML output
-    return Response(content=html_content, media_type="text/html", headers={
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    })
+    return Response(
+        content=html_content,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 @app.get("/comandos")
 def show_commands():
@@ -245,7 +258,8 @@ async def whatsapp_webhook(request: Request):
 
         phone = from_number.replace("whatsapp:", "")
 
-        # LISTINHA command
+        # LISTINHA commands
+
         if cmd == "/listinha":
             name = arg.strip()[:20] if arg else ""
 
