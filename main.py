@@ -173,6 +173,17 @@ def show_commands():
         html = f.read()
     return HTMLResponse(html)
 
+# === ✅ NEW: ALIASES so calls to /meta-webhook don't 404 ===
+@app.get("/meta-webhook")
+async def meta_verify_alias(request: Request):
+    # delegate to the existing verifier
+    return await meta_verify(request)
+
+@app.post("/meta-webhook")
+async def whatsapp_webhook_alias(request: Request):
+    # delegate to the existing message handler
+    return await whatsapp_webhook(request)
+
 @app.get("/webhook")
 async def meta_verify(request: Request):
     qp = request.query_params
