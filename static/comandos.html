@@ -3,27 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <title>Comandos da Listinha</title>
-  <!-- Optional: Poppins. For PDF, WeasyPrint may use local fallback if Google is blocked. -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/pdf.css">
 </head>
 <body>
   <div class="container">
     <h1>Comandos da Listinha</h1>
-
     <ul class="command-list">
       <li class="command-item">
-        <div class="command">
-          <span class="command-code">i</span>
-          <span class="command-desc">Incluir um item</span>
-        </div>
+        <div class="command"><span class="command-code">i</span><span class="command-desc">Incluir um item</span></div>
         <div class="command-format"><strong>Formato:</strong> <code>i &lt;item&gt;</code></div>
         <div class="command-example"><span>i água</span></div>
         <div class="command-example"><span>i arroz - 5 kg</span></div>
       </li>
 
-      <!-- ...repita as demais entradas exatamente como já tem... -->
+      <li class="command-item">
+        <div class="command"><span class="command-code">a</span><span class="command-desc">Apagar um item</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>a &lt;item&gt;</code></div>
+        <div class="command-example"><span>a laranja</span></div>
+      </li>
 
+      <li class="command-item">
+        <div class="command"><span class="command-code">u</span><span class="command-desc">Incluir convidado</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>u &lt;telefone&gt; &lt;nome&gt;</code></div>
+        <div class="command-example"><span>u 11999999999 Alice</span></div>
+      </li>
+
+      <li class="command-item"><div class="command"><span class="command-code">v</span><span class="command-desc">Ver a lista</span></div></li>
+      <li class="command-item"><div class="command"><span class="command-code">x</span><span class="command-desc">Ver quem incluiu e quando</span></div></li>
+      <li class="command-item"><div class="command"><span class="command-code">p</span><span class="command-desc">Baixar a lista em PDF</span></div></li>
+      <li class="command-item"><div class="command"><span class="command-code">l</span><span class="command-desc">Limpar toda a lista</span></div></li>
+
+      <li class="command-item">
+        <div class="command"><span class="command-code">b</span><span class="command-desc">Renomear a lista</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>b &lt;título&gt;</code></div>
+        <div class="command-example"><span>b Lista de Tarefas</span></div>
+      </li>
+
+      <li class="command-item"><div class="command"><span class="command-code">p</span><span class="command-desc">Ver quem está na lista</span></div></li>
+
+      <li class="command-item">
+        <div class="command"><span class="command-code">e</span><span class="command-desc">Remover convidado</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>e &lt;telefone&gt;</code></div>
+        <div class="command-example"><span>e 11999999999</span></div>
+      </li>
+
+      <li class="command-item">
+        <div class="command"><span class="command-code">t</span><span class="command-desc">Transferir o papel de dono</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>t &lt;telefone&gt;</code></div>
+        <div class="command-example"><span>t 11999999999</span></div>
+      </li>
+
+      <li class="command-item"><div class="command"><span class="command-code">o</span><span class="command-desc">Aceitar ser dono da lista</span></div></li>
+      <li class="command-item"><div class="command"><span class="command-code">m</span><span class="command-desc">Mostrar este menu</span></div><div class="command-example"><span>menu</span></div></li>
+
+      <li class="command-item">
+        <div class="command"><span class="command-code">s</span><span class="command-desc">Sair da lista</span></div>
+        <div class="command-format"><strong>Formato:</strong> <code>s &lt;seu número&gt;</code></div>
+        <div class="command-example"><span>s 11999999999</span></div>
+      </li>
+
+      <li class="command-item"><div class="command"><span class="command-code">h</span><span class="command-desc">Ajuda</span></div></li>
     </ul>
   </div>
 </body>

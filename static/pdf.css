@@ -42,30 +42,31 @@ code {
 
 /* ====== Layout Containers ====== */
 .container {
-  max-width: 100%;
-  margin: 0 auto;
+  max-width: 900px;                 /* narrower, centered card */
+  margin: 24px auto;
   background: #fff;
   border-radius: var(--border-radius);
   box-shadow: 0 4px 12px rgba(0,0,0,.08);
   overflow: hidden;
-  padding: 16px 18px;
+  padding: 18px;
 }
 
-/* ====== Command List Styles (from comandos.html) ====== */
+/* ====== Command List Styles ====== */
 .command-list { list-style: none; padding: 0; margin: 0; }
-.command-item { padding: 6px 8px; margin-bottom: 4px; }
+.command-item { padding: 6px 8px; margin-bottom: 6px; }
 .command { display: flex; align-items: center; }
 
-.command-code {
+/* round badge */
+.command-code{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   background: var(--primary);
   color: #fff;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 600;
   margin-right: 10px;
-  min-width: 1.4rem;
-  text-align: center;
   flex-shrink: 0;
 }
 
@@ -85,7 +86,7 @@ code {
   font-weight: 700;
 }
 
-/* inline “Formato:” helper blocks sometimes used under items */
+/* inline “Formato:” helper blocks */
 .command-format {
   margin: 4px 0 0 32px;
   font-size: 0.9rem;
