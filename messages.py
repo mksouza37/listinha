@@ -123,7 +123,19 @@ def list_detailed_url(url):
 def not_a_member(phone):
     return f"⚠️ O número *{phone}* não participa desta Listinha."
 
+# messages.py
+
+def br_local_number(num: str) -> str:
+    """Return the Brazilian local form without country code.
+    Ex.: '+55 11 91270-5543' -> '11912705543'"""
+    digits = "".join(ch for ch in (num or "") if ch.isdigit())
+    # Drop leading '55' only when it looks like E.164 (12–13 digits total for BR)
+    if digits.startswith("55") and len(digits) >= 12:
+        return digits[2:]
+    return digits
+
 def indication_text(display_number: str) -> str:
+    local = br_local_number(display_number)  # e.g. '11999999999'
     return f"""Experimentei e achei interessante. Estou compartilhando.
 
 🛒 Conheça a Listinha: sua lista de compras no WhatsApp.
@@ -134,7 +146,7 @@ A lista fica disponível para todos, a qualquer momento — e no dia da compra, 
 
 Gostaria de experimentar por 1 mês grátis?
 
-📞 No seu WhatsApp digite: {display_number} e acione conversar
+📞 No seu WhatsApp digite: {local} e acione conversar
 ✍️ Envie: listinha "seu nome". Ex.: listinha Patrícia
 
 Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
