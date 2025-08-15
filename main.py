@@ -345,6 +345,7 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # Delete item: a <número | texto>
+        # Delete item: a <número | texto>
         if cmd == "/a" and arg:
             wanted = arg.strip()
 
@@ -352,13 +353,12 @@ async def whatsapp_webhook(request: Request):
             if wanted.isdigit():
                 idx = int(wanted)
 
-                # Load snapshot
-                group = get_user_group(phone)
-                current_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-                snap_doc_id, snap_items, snap_ts = load_view_snapshot(phone)
+                snap = load_view_snapshot(phone)
+                snap_items = snap.get("items")
+                snap_doc_id = snap.get("doc_id")
+                snap_ts = snap.get("ts_epoch")
 
-                # Guardrails: must exist, must be fresh, and must refer to this list
-                if not (snap_items and snapshot_is_fresh(snap_ts) and snap_doc_id == current_doc_id):
+                if not (snap_items and snapshot_is_fresh(snap_ts) and snap_doc_id == current_doc_id(phone)):
                     send_message(from_number, NEED_REFRESH_VIEW)
                     return {"status": "ok"}
 
@@ -366,7 +366,7 @@ async def whatsapp_webhook(request: Request):
                     send_message(from_number, item_index_invalid(idx, len(snap_items)))
                     return {"status": "ok"}
 
-                canonical = snap_items[idx - 1]  # text the user actually saw at that position
+                canonical = snap_items[idx - 1]
                 delete_item(phone, canonical)
                 send_message(from_number, item_removed(canonical))
                 return {"status": "ok"}
@@ -375,14 +375,12 @@ async def whatsapp_webhook(request: Request):
             items = get_items(phone) or []
 
             def _norm(s: str) -> str:
-                return normalize_text(s)
+                return normalize_text(s)  # your existing normalizer
 
             match_text = None
             for txt in items:
-                match_text = (
-                    txt if _norm(txt) == _norm(wanted) else match_text
-                )
-                if match_text:
+                if _norm(txt) == _norm(wanted):
+                    match_text = txt
                     break
 
             if not match_text:
@@ -589,20 +587,19 @@ async def whatsapp_webhook(request: Request):
 
         # View list
         if cmd == "/v":
-            raw_items = get_items(phone)
+            raw_items = get_items(phone)  # already A→Z
+            items = [entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry) for entry in
+                     raw_items]
 
-            # Support both dict-style and legacy string-style items
-            items = [
-                entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
-                for entry in raw_items
-            ]
+            # Save the snapshot the user will see now
+            save_view_snapshot(phone, items)
 
-            # Build doc id
+            # Build doc id for links and fetch title (same as you already do)
             group = get_user_group(phone)
-            raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+            raw_doc_id = current_doc_id(phone)
             doc_id = quote(raw_doc_id, safe="")
 
-            # Always have a default title; override if found
+            # Title fallback
             title = "Sua Listinha"
             try:
                 ref = firestore.client().collection("listas").document(raw_doc_id)
@@ -611,15 +608,15 @@ async def whatsapp_webhook(request: Request):
                     data = doc.to_dict() or {}
                     title = data.get("title") or title
             except Exception:
-                # If Firestore hiccups, we still have a sane default title
                 pass
 
+            # Short vs PDF (unchanged)
             if len(items) > 20:
-                html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
-                send_message(from_number, list_download_pdf(title, len(items), html_url))
+                timestamp = int(time.time())
+                pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&&t={timestamp}"
+                send_message(from_number, list_download_url(pdf_url))
             else:
                 send_message(from_number, list_shown(title, items))
-
             return {"status": "ok"}
 
         # Download PDF: d
@@ -757,39 +754,32 @@ def normalize_text(s: str) -> str:
     s = " ".join(s.lower().split())
     return s
 
-SNAPSHOT_TTL = timedelta(minutes=5)  # how long a 'v' snapshot is valid
+SNAPSHOT_TTL_SECONDS = 600  # 10 minutos
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def current_doc_id(phone: str) -> str:
+    group = get_user_group(phone) or {}
+    return f"{group.get('instance','default')}__{group.get('owner', phone)}__{group.get('list','default')}"
 
-def save_view_snapshot(phone: str, doc_id: str, items: list[str]) -> None:
+def save_view_snapshot(phone: str, items: list[str]) -> None:
     """Persist the user's last alphabetized view as a 1..N → text mapping."""
-    user_ref = firestore.client().collection("users").document(phone)
-    payload = {
+    firestore.client().collection("users").document(phone).set({
         "last_view_snapshot": {
-            "doc_id": doc_id,
-            "items": items,          # list of strings in the order the user saw
-            "ts": _now_iso(),        # ISO UTC timestamp
+            "doc_id": current_doc_id(phone),
+            "items": items,
+            "ts_epoch": int(datetime.now(timezone.utc).timestamp()),
         }
-    }
-    user_ref.set(payload, merge=True)
+    }, merge=True)
 
 def load_view_snapshot(phone: str):
-    """Return (doc_id, items, ts) or (None, None, None)."""
-    user_ref = firestore.client().collection("users").document(phone)
-    doc = user_ref.get()
+    doc = firestore.client().collection("users").document(phone).get()
     if not doc.exists:
-        return None, None, None
-    data = doc.to_dict() or {}
-    snap = data.get("last_view_snapshot") or {}
-    return snap.get("doc_id"), snap.get("items"), snap.get("ts")
+        return None
+    return (doc.to_dict() or {}).get("last_view_snapshot") or {}
 
-def snapshot_is_fresh(ts_iso: str | None) -> bool:
+def snapshot_is_fresh(ts_epoch) -> bool:
     try:
-        if not ts_iso:
-            return False
-        ts = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
-        return (datetime.now(timezone.utc) - ts) <= SNAPSHOT_TTL
+        now = int(datetime.now(timezone.utc).timestamp())
+        return (now - int(ts_epoch)) <= SNAPSHOT_TTL_SECONDS
     except Exception:
         return False
 

@@ -172,15 +172,11 @@ NEED_REFRESH_VIEW = "📄 Sua visualização está desatualizada. Envie *v* para
 def item_index_invalid(n: int, total: int) -> str:
     return f"❌ Número {n} não corresponde a nenhum item. Envie *v* para ver a lista numerada ({total} itens)."
 
-# Update: show a numbered, alphabetically-sorted list
 def list_shown(title: str, items: list[str]) -> str:
-    """
-    items: list of plain strings (already sorted). We render them numbered 1..N.
-    """
     if not items:
-        return f"📄 {title}\n\n(sem itens)"
+        return f"📄 *{title}*\n(sem itens)"
     lines = [f"{i+1}. {items[i]}" for i in range(len(items))]
-    return f"📄 {title} ({len(items)} itens)\n\n" + "\n".join(lines)
+    return f"📄 *{title}* ({len(items)} itens)\n\n" + "\n".join(lines)
 
 LIST_CLEARED = "✅ Sua listinha foi limpa!"
 
