@@ -40,10 +40,12 @@ NUMBER_MAP = {k: v for k, v in _raw_map.items() if k}
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
 META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
-
+META_MESSAGES_URL   = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
 # Token de verificação para o GET do webhook (Meta)
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
 
+def digits_only(s: str) -> str:
+    return "".join(ch for ch in s if ch.isdigit())
 
 @app.get("/")
 def root():
@@ -577,16 +579,15 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         if cmd == "/z":
-            # 1) Envia o cartão de contato do Listinha (botões nativos: "Mensagem" / "Adicionar")
+            # 1) Envia o cartão de contato do Listinha
             send_contact(from_number, "Listinha", PUBLIC_DISPLAY_NUMBER)
 
-            # 2) Mensagem de instruções logo abaixo do cartão
-            instructions = (
-                "🟢 *Como começar*\n\n"
-                'Escreva: *listinha "seu nome"* e envie a mensagem.\n'
+            # 2) Instruções logo abaixo do cartão (texto exato que você pediu)
+            send_message(
+                from_number,
+                'Escreva: *listinha "seu nome"* e envie mensagem.\n'
                 "Feito isso, já poderá usar a sua listinha."
             )
-            send_message(from_number, instructions)
             return {"status": "ok"}
 
     except Exception as e:
@@ -595,31 +596,27 @@ async def whatsapp_webhook(request: Request):
 
 def send_contact(to_e164: str, contact_name: str, business_e164: str):
     """
-    Sends a WhatsApp contact card (vCard-like) with native 'Mensagem' / 'Adicionar' actions.
-    business_e164 should be in +5511912345678 format (your Listinha number).
+    Sends a WhatsApp contact card (native 'Mensagem' / 'Adicionar contato' buttons).
+    business_e164 must be in E.164, e.g. '+55 11 91270-5543'.
     """
     payload = {
         "messaging_product": "whatsapp",
         "to": to_e164,
         "type": "contacts",
-        "contacts": [
-            {
-                "name": {"formatted_name": contact_name},
-                "phones": [
-                    {
-                        "phone": business_e164,
-                        "type": "CELL",
-                        "wa_id": "".join(ch for ch in business_e164 if ch.isdigit())  # digits only
-                    }
-                ]
-            }
-        ]
+        "contacts": [{
+            "name": {"formatted_name": contact_name},
+            "phones": [{
+                "phone": business_e164,
+                "type": "CELL",
+                "wa_id": digits_only(business_e164)
+            }]
+        }]
     }
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
     }
-    requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=10)
+    requests.post(META_MESSAGES_URL, json=payload, headers=headers, timeout=10)
 
 def send_message(to, body):
     """
