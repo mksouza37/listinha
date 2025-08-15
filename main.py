@@ -40,12 +40,10 @@ NUMBER_MAP = {k: v for k, v in _raw_map.items() if k}
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
 META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
-META_MESSAGES_URL   = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
+
 # Token de verificação para o GET do webhook (Meta)
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
 
-def digits_only(s: str) -> str:
-    return "".join(ch for ch in s if ch.isdigit())
 
 @app.get("/")
 def root():
@@ -579,44 +577,22 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         if cmd == "/z":
-            # 1) Envia o cartão de contato do Listinha
-            send_contact(from_number, "Listinha", PUBLIC_DISPLAY_NUMBER)
+            # 1) Instruction message
+            send_message(from_number, z_step1_instructions())
 
-            # 2) Instruções logo abaixo do cartão (texto exato que você pediu)
-            send_message(
-                from_number,
-                'Escreva: *listinha "seu nome"* e envie mensagem.\n'
-                "Feito isso, já poderá usar a sua listinha."
-            )
+            # 2) Ready-to-copy message
+            full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
+            send_message(from_number, full_text)
+
             return {"status": "ok"}
+
+        # ✅ Fallback for unknown commands
+        send_message(from_number, UNKNOWN_COMMAND)
+        return {"status": "ok"}
 
     except Exception as e:
         print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
-
-def send_contact(to_e164: str, contact_name: str, business_e164: str):
-    """
-    Sends a WhatsApp contact card (native 'Mensagem' / 'Adicionar contato' buttons).
-    business_e164 must be in E.164, e.g. '+55 11 91270-5543'.
-    """
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_e164,
-        "type": "contacts",
-        "contacts": [{
-            "name": {"formatted_name": contact_name},
-            "phones": [{
-                "phone": business_e164,
-                "type": "CELL",
-                "wa_id": digits_only(business_e164)
-            }]
-        }]
-    }
-    headers = {
-        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    requests.post(META_MESSAGES_URL, json=payload, headers=headers, timeout=10)
 
 def send_message(to, body):
     """

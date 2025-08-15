@@ -111,15 +111,16 @@ Acabou aquela estória de quem esqueceu de comprar o que no supermercado! 😄
 Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
 A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
 
-Gostaria de experimentar por 1 mês grátis? 
-📞 Salve nos seus contatos: {display_number}
-✍️ Envie: "listinha"
+Gostaria de experimentar por 1 mês grátis?
 
-Sua lista será criada e você receberá orientações sobre como utilizar.
+📞 No seu WhatsApp digite: {display_number} e acione conversar
+✍️ Envie: "listinha "seu nome". Ex.: listinha Patrícia
 
-Se quiser saber um pouco mais, consulte nosso site: https://listinha-landing.onrender.com
+Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
 
-Dica: se após experimentar por um mês você gostar e indicar para amigos, ganha mais 2 meses grátis.
+Se quiser conhecer um pouco mais sobre a listinha? Consulte nosso site: https://listinha-landing.onrender.com
+
+Dica: se após experimentar por um mês você gostar e indicar para amigos, ganhará mais 2 meses grátis.
 """
 
 def z_step1_instructions() -> str:
