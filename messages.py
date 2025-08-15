@@ -167,7 +167,8 @@ def z_step1_instructions() -> str:
         "👇 Mensagem para copiar e enviar."
     )
 
-# New: when a user tries to delete by a number that doesn't exist
+NEED_REFRESH_VIEW = "📄 Sua visualização está desatualizada. Envie *v* para ver a lista numerada novamente."
+
 def item_index_invalid(n: int, total: int) -> str:
     return f"❌ Número {n} não corresponde a nenhum item. Envie *v* para ver a lista numerada ({total} itens)."
 

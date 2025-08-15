@@ -15,7 +15,7 @@ import requests
 from urllib.parse import quote
 from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 import pytz
 import phonenumbers
@@ -344,30 +344,45 @@ async def whatsapp_webhook(request: Request):
                 send_message(from_number, item_already_exists(arg))
             return {"status": "ok"}
 
-        # Delete item: a <item | número>
+        # Delete item: a <número | texto>
         if cmd == "/a" and arg:
             wanted = arg.strip()
-            items = get_items(phone) or []  # <- already sorted A→Z (strings only)
 
-            # If the user sent a number, use it as 1-based index
+            # If it's a number, resolve via last snapshot (no race with live reordering)
             if wanted.isdigit():
                 idx = int(wanted)
-                if idx < 1 or idx > len(items):
-                    send_message(from_number, item_index_invalid(idx, len(items)))
+
+                # Load snapshot
+                group = get_user_group(phone)
+                current_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
+                snap_doc_id, snap_items, snap_ts = load_view_snapshot(phone)
+
+                # Guardrails: must exist, must be fresh, and must refer to this list
+                if not (snap_items and snapshot_is_fresh(snap_ts) and snap_doc_id == current_doc_id):
+                    send_message(from_number, NEED_REFRESH_VIEW)
                     return {"status": "ok"}
-                canonical = items[idx - 1]  # exact string we store/delete
+
+                if idx < 1 or idx > len(snap_items):
+                    send_message(from_number, item_index_invalid(idx, len(snap_items)))
+                    return {"status": "ok"}
+
+                canonical = snap_items[idx - 1]  # text the user actually saw at that position
                 delete_item(phone, canonical)
                 send_message(from_number, item_removed(canonical))
                 return {"status": "ok"}
 
-            # Otherwise: textual delete with accent-insensitive matching
+            # Otherwise fall back to text delete (accent-insensitive)
+            items = get_items(phone) or []
+
             def _norm(s: str) -> str:
-                return normalize_text(s)  # you already have this at the bottom of main.py
+                return normalize_text(s)
 
             match_text = None
             for txt in items:
-                if _norm(txt) == _norm(wanted):
-                    match_text = txt
+                match_text = (
+                    txt if _norm(txt) == _norm(wanted) else match_text
+                )
+                if match_text:
                     break
 
             if not match_text:
@@ -576,7 +591,7 @@ async def whatsapp_webhook(request: Request):
         if cmd == "/v":
             raw_items = get_items(phone)
 
-            # Support both dict-style and legacy string-style items
+            # Normalize to list[str]
             items = [
                 entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
                 for entry in raw_items
@@ -586,17 +601,13 @@ async def whatsapp_webhook(request: Request):
             raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
             doc_id = quote(raw_doc_id, safe="")
 
-            # Get title from list document
-            ref = firestore.client().collection("listas").document(raw_doc_id)
-            doc = ref.get()
-            title = doc.to_dict().get("title", "Sua Listinha") if doc.exists else "Sua Listinha"
+            # (you may build title, count, etc. here...)
 
-            if len(items) > 20:
-                html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
-                send_message(from_number, list_download_pdf(title, len(items), html_url))
-            else:
-                send_message(from_number, list_shown(title, items))
+            # 👉 Save the snapshot the user will see (alphabetical order already applied)
+            save_view_snapshot(phone, raw_doc_id, items)
 
+            # Now send your numbered A→Z list as usual
+            send_message(from_number, list_shown(title, items))
             return {"status": "ok"}
 
         # Download PDF: d
@@ -733,3 +744,40 @@ def normalize_text(s: str) -> str:
     # lowercase + collapse whitespace
     s = " ".join(s.lower().split())
     return s
+
+SNAPSHOT_TTL = timedelta(minutes=5)  # how long a 'v' snapshot is valid
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+def save_view_snapshot(phone: str, doc_id: str, items: list[str]) -> None:
+    """Persist the user's last alphabetized view as a 1..N → text mapping."""
+    user_ref = firestore.client().collection("users").document(phone)
+    payload = {
+        "last_view_snapshot": {
+            "doc_id": doc_id,
+            "items": items,          # list of strings in the order the user saw
+            "ts": _now_iso(),        # ISO UTC timestamp
+        }
+    }
+    user_ref.set(payload, merge=True)
+
+def load_view_snapshot(phone: str):
+    """Return (doc_id, items, ts) or (None, None, None)."""
+    user_ref = firestore.client().collection("users").document(phone)
+    doc = user_ref.get()
+    if not doc.exists:
+        return None, None, None
+    data = doc.to_dict() or {}
+    snap = data.get("last_view_snapshot") or {}
+    return snap.get("doc_id"), snap.get("items"), snap.get("ts")
+
+def snapshot_is_fresh(ts_iso: str | None) -> bool:
+    try:
+        if not ts_iso:
+            return False
+        ts = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - ts) <= SNAPSHOT_TTL
+    except Exception:
+        return False
+
