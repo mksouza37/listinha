@@ -5,6 +5,17 @@ ALREADY_IN_LIST = (
     "⚠️ Você já está participando de uma Listinha 😊\n"
     "Se quiser criar outra, primeiro saia da atual com o comando s 11999999999."
 )
+
+NAMELESS_OPENING = (
+    "⚠️ Por favor, envie listinha mais o seu nome: ex.: listinha Patrícia"
+)
+
+ADD_USER_USAGE = (
+    "Para adicionar alguém, envie:\n"
+    "u <telefone> <nome>\n"
+    "Ex.: u 11999999999 Patrícia"
+)
+
 NOT_IN_LIST = (
     "⚠️ Você ainda não participa de nenhuma Listinha.\n"
     "Para começar, digite: listinha"
@@ -37,6 +48,16 @@ NOT_OWNER_CANNOT_RENAME = "❌ Só o Dono da Listinha pode mudar o título."
 NOT_OWNER_CANNOT_CLEAR = "❌ Só o Dono da Listinha pode limpar todos os itens."
 
 # Dynamic messages
+
+def REMOVED_FROM_LIST(admin_display_name: str) -> str:
+    return (
+        f"🚫 Você foi removido da *Listinha* de {admin_display_name}.\n"
+        "Se foi engano, peça um novo convite."
+    )
+
+def MEMBER_LEFT_NOTIFICATION(leaver_display: str) -> str:
+    return f"👋 {leaver_display} saiu da sua Listinha."
+
 def list_created(name_or_phone):
     return (
         f"🎉 Prontinho! Sua *Listinha* foi criada e você é o *Dono*, {name_or_phone}. "
@@ -114,11 +135,11 @@ A lista fica disponível para todos, a qualquer momento — e no dia da compra, 
 Gostaria de experimentar por 1 mês grátis?
 
 📞 No seu WhatsApp digite: {display_number} e acione conversar
-✍️ Envie: "listinha "seu nome". Ex.: listinha Patrícia
+✍️ Envie: listinha "seu nome". Ex.: listinha Patrícia
 
 Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
 
-Se quiser conhecer um pouco mais sobre a listinha? Consulte nosso site: https://listinha-landing.onrender.com
+Quer saber um pouco mais sobre a listinha? Consulte nosso site: https://listinha-landing.onrender.com
 
 Dica: se após experimentar por um mês você gostar e indicar para amigos, ganhará mais 2 meses grátis.
 """
@@ -126,11 +147,12 @@ Dica: se após experimentar por um mês você gostar e indicar para amigos, ganh
 def z_step1_instructions() -> str:
     return (
         "📣 Ajude a divulgar a Listinha!\n\n"
-        "1) COPIE a mensagem que vou enviar a seguir\n"
-        "2) COLE em um grupo ou contato e envie\n"
-        
-        "Pronto? Vou mandar o texto agora 👇"
-        "Muito brigado por ajudar a divulgar!\n\n"
+        "1) COPIE a mensagem que enviei logo após essa.\n"
+        "2) COLE em um grupo ou contato e envie.\n"
+                
+        "Muito obrigado por ajudar na divulgação!\n\n"
+
+        "👇 Mensagem para copiar e enviar."
     )
 
 LIST_CLEARED = "✅ Sua listinha foi limpa!"

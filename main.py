@@ -21,6 +21,7 @@ import pytz
 import phonenumbers
 from phonenumbers import NumberParseException
 from messages import *
+import unicodedata
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -325,6 +326,21 @@ async def whatsapp_webhook(request: Request):
 
             return {"status": "ok"}
 
+        if cmd == "/listinha":
+            raw = (arg or "").strip()
+            name = raw.strip('"').strip()[:20]  # tolerates quotes: listinha "Ana"
+
+            if not name:
+                send_message(from_number,NAMELESS_OPENING)
+                return {"status": "ok"}
+
+            if user_in_list(phone):
+                send_message(from_number, ALREADY_IN_LIST)
+            else:
+                create_new_list(phone, instance_id, name)
+                send_message(from_number, list_created(f"*{name}*"))
+            return {"status": "ok"}
+
         # Check if user exists before other commands
         if not user_in_list(phone):
             send_message(from_number, NOT_IN_LIST)
@@ -342,19 +358,43 @@ async def whatsapp_webhook(request: Request):
 
         # Delete item: a <item>
         if cmd == "/a" and arg:
-            deleted = delete_item(phone, arg)
-            if deleted:
-                send_message(from_number, item_removed(arg))
-            else:
-                send_message(from_number, item_not_found(arg))
+            wanted = arg.strip()
+            items = get_items(phone) or []
+
+            def _as_text(it):
+                return it if isinstance(it, str) else (it.get("item") or it.get("name") or "")
+
+            target_norm = normalize_text(wanted)
+            match_text = None
+
+            for it in items:
+                txt = _as_text(it)
+                if normalize_text(txt) == target_norm:
+                    match_text = txt
+                    break
+
+            if not match_text:
+                send_message(from_number, item_not_found(wanted))
+                return {"status": "ok"}
+
+            delete_item(phone, match_text)
+            send_message(from_number, item_removed(match_text))
             return {"status": "ok"}
 
         # Add new user (u <phone> [name])
-        if cmd == "/u" and arg:
+        if cmd == "/u":
+            # Requer telefone + nome
+            if not arg:
+                send_message(from_number, ADD_USER_USAGE)
+                return {"status": "ok"}
 
             parts = arg.strip().split(maxsplit=1)
-            phone_part = parts[0]
-            name = parts[1].strip()[:20] if len(parts) > 1 else ""
+            if len(parts) < 2 or not parts[1].strip():
+                send_message(from_number, ADD_USER_USAGE)
+                return {"status": "ok"}
+
+            phone_part, name_raw = parts[0], parts[1].strip()
+            name = name_raw[:20]
 
             target_phone = normalize_phone(phone_part, phone)
             if not target_phone:
@@ -367,31 +407,42 @@ async def whatsapp_webhook(request: Request):
 
             success, status = add_user_to_list(phone, target_phone, name=name)
             if success:
-
+                # Confirma ao dono
                 send_message(from_number, guest_added(name, target_phone))
 
+                # Dá boas-vindas ao convidado com o nome do dono (se existir)
                 admin_data = firestore.client().collection("users").document(phone).get().to_dict()
-                admin_name = admin_data.get("name", "").strip()
+                admin_name = (admin_data or {}).get("name", "").strip()
                 admin_display_name = f"*{admin_name}*" if admin_name else phone
 
                 send_message(f"whatsapp:{target_phone}", WELCOME_MESSAGE(name, admin_display_name))
 
             elif status == "already_in_list":
                 send_message(from_number, guest_already_in_other_list(target_phone))
+
             return {"status": "ok"}
 
         # Remove user (admin): e <phone>
         if cmd == "/e" and arg:
-
             target_phone = normalize_phone(arg, phone)
             if not target_phone:
                 send_message(from_number, INVALID_NUMBER)
                 return {"status": "ok"}
+
             if not is_admin(phone):
                 send_message(from_number, NOT_OWNER_CANNOT_REMOVE)
                 return {"status": "ok"}
+
             if remove_user_from_list(phone, target_phone):
+                # confirm to admin
                 send_message(from_number, guest_removed("", target_phone))
+
+                # notify removed user with admin display name
+                admin_data = firestore.client().collection("users").document(phone).get().to_dict()
+                admin_name = (admin_data or {}).get("name", "").strip()
+                admin_display_name = f"*{admin_name}*" if admin_name else phone
+
+                send_message(f"whatsapp:{target_phone}", REMOVED_FROM_LIST(admin_display_name))
             else:
                 send_message(from_number, not_a_member(target_phone))
             return {"status": "ok"}
@@ -411,10 +462,26 @@ async def whatsapp_webhook(request: Request):
                 send_message(from_number, INVALID_SELF_EXIT)
                 return {"status": "ok"}
 
+            # Get group BEFORE removal so we know the owner to notify
+            group = get_user_group(phone) or {}
+            owner_phone = group.get("owner")
+
             if remove_self_from_list(phone):
+                # tell the leaver
                 send_message(from_number, LEFT_LIST)
+
+                # politely notify the owner (if exists and not the same as the leaver)
+                if owner_phone and owner_phone != phone:
+                    # Try to show the leaver's saved name; fallback to phone
+                    user_doc = firestore.client().collection("users").document(phone).get()
+                    user_data = (user_doc.to_dict() or {}) if user_doc.exists else {}
+                    leaver_name = (user_data.get("name") or "").strip()
+                    leaver_display = f"*{leaver_name}*" if leaver_name else phone
+
+                    send_message(f"whatsapp:{owner_phone}", MEMBER_LEFT_NOTIFICATION(leaver_display))
             else:
                 send_message(from_number, CANNOT_EXIT_AS_ADMIN)
+
             return {"status": "ok"}
 
         # Transfer admin role: t <phone>
@@ -656,3 +723,16 @@ def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_fo
         mode=mode
     )
 
+def normalize_text(s: str) -> str:
+    """
+    Lowercase, remove accents/diacritics, and collapse inner spaces.
+    Ex.: '  PÃO   de   Açúcar  ' -> 'pao de acucar'
+    """
+    if not s:
+        return ""
+    # NFD split + remove combining marks (accents)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    # lowercase + collapse whitespace
+    s = " ".join(s.lower().split())
+    return s
