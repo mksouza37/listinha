@@ -22,7 +22,6 @@ import phonenumbers
 from phonenumbers import NumberParseException
 from messages import *
 
-
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 PUBLIC_DISPLAY_NUMBER = os.getenv("PUBLIC_DISPLAY_NUMBER", "+55 11 91270-5543")  # your real number
@@ -578,22 +577,49 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         if cmd == "/z":
-            # 1) Instruction message
-            send_message(from_number, z_step1_instructions())
+            # 1) Envia o cartão de contato do Listinha (botões nativos: "Mensagem" / "Adicionar")
+            send_contact(from_number, "Listinha", PUBLIC_DISPLAY_NUMBER)
 
-            # 2) Ready-to-copy message
-            full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
-            send_message(from_number, full_text)
-
+            # 2) Mensagem de instruções logo abaixo do cartão
+            instructions = (
+                "🟢 *Como começar*\n\n"
+                'Escreva: *listinha "seu nome"* e envie a mensagem.\n'
+                "Feito isso, já poderá usar a sua listinha."
+            )
+            send_message(from_number, instructions)
             return {"status": "ok"}
-
-        # ✅ Fallback for unknown commands
-        send_message(from_number, UNKNOWN_COMMAND)
-        return {"status": "ok"}
 
     except Exception as e:
         print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
+
+def send_contact(to_e164: str, contact_name: str, business_e164: str):
+    """
+    Sends a WhatsApp contact card (vCard-like) with native 'Mensagem' / 'Adicionar' actions.
+    business_e164 should be in +5511912345678 format (your Listinha number).
+    """
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_e164,
+        "type": "contacts",
+        "contacts": [
+            {
+                "name": {"formatted_name": contact_name},
+                "phones": [
+                    {
+                        "phone": business_e164,
+                        "type": "CELL",
+                        "wa_id": "".join(ch for ch in business_e164 if ch.isdigit())  # digits only
+                    }
+                ]
+            }
+        ]
+    }
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=10)
 
 def send_message(to, body):
     """
