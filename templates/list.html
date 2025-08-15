@@ -99,11 +99,11 @@
       </tbody>
     </table>
   {% else %}
-    <ul>
+    <ol>
       {% for item in items %}
       <li>{{ item.item.lstrip('.• ').strip() }}</li>
       {% endfor %}
-    </ul>
+    </ol>
   {% endif %}
 
   <div class="actions hide-on-pdf">

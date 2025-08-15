@@ -344,20 +344,29 @@ async def whatsapp_webhook(request: Request):
                 send_message(from_number, item_already_exists(arg))
             return {"status": "ok"}
 
-        # Delete item: a <item>
+        # Delete item: a <item | número>
         if cmd == "/a" and arg:
             wanted = arg.strip()
-            items = get_items(phone) or []
+            items = get_items(phone) or []  # <- already sorted A→Z (strings only)
 
-            def _as_text(it):
-                return it if isinstance(it, str) else (it.get("item") or it.get("name") or "")
+            # If the user sent a number, use it as 1-based index
+            if wanted.isdigit():
+                idx = int(wanted)
+                if idx < 1 or idx > len(items):
+                    send_message(from_number, item_index_invalid(idx, len(items)))
+                    return {"status": "ok"}
+                canonical = items[idx - 1]  # exact string we store/delete
+                delete_item(phone, canonical)
+                send_message(from_number, item_removed(canonical))
+                return {"status": "ok"}
 
-            target_norm = normalize_text(wanted)
+            # Otherwise: textual delete with accent-insensitive matching
+            def _norm(s: str) -> str:
+                return normalize_text(s)  # you already have this at the bottom of main.py
+
             match_text = None
-
-            for it in items:
-                txt = _as_text(it)
-                if normalize_text(txt) == target_norm:
+            for txt in items:
+                if _norm(txt) == _norm(wanted):
                     match_text = txt
                     break
 
