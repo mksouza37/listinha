@@ -591,23 +591,35 @@ async def whatsapp_webhook(request: Request):
         if cmd == "/v":
             raw_items = get_items(phone)
 
-            # Normalize to list[str]
+            # Support both dict-style and legacy string-style items
             items = [
                 entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry)
                 for entry in raw_items
             ]
 
+            # Build doc id
             group = get_user_group(phone)
             raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
             doc_id = quote(raw_doc_id, safe="")
 
-            # (you may build title, count, etc. here...)
+            # Always have a default title; override if found
+            title = "Sua Listinha"
+            try:
+                ref = firestore.client().collection("listas").document(raw_doc_id)
+                doc = ref.get()
+                if doc.exists:
+                    data = doc.to_dict() or {}
+                    title = data.get("title") or title
+            except Exception:
+                # If Firestore hiccups, we still have a sane default title
+                pass
 
-            # 👉 Save the snapshot the user will see (alphabetical order already applied)
-            save_view_snapshot(phone, raw_doc_id, items)
+            if len(items) > 20:
+                html_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&t={int(time.time())}"
+                send_message(from_number, list_download_pdf(title, len(items), html_url))
+            else:
+                send_message(from_number, list_shown(title, items))
 
-            # Now send your numbered A→Z list as usual
-            send_message(from_number, list_shown(title, items))
             return {"status": "ok"}
 
         # Download PDF: d
