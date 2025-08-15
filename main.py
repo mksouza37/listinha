@@ -315,18 +315,6 @@ async def whatsapp_webhook(request: Request):
         # LISTINHA commands
 
         if cmd == "/listinha":
-            name = arg.strip()[:20] if arg else ""
-
-            if user_in_list(phone):
-                send_message(from_number, ALREADY_IN_LIST)
-            else:
-                create_new_list(phone, instance_id, name)
-                display_name = f"*{name}*" if name else phone
-                send_message(from_number, list_created(display_name))
-
-            return {"status": "ok"}
-
-        if cmd == "/listinha":
             raw = (arg or "").strip()
             name = raw.strip('"').strip()[:20]  # tolerates quotes: listinha "Ana"
 

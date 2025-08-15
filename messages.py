@@ -128,7 +128,7 @@ def indication_text(display_number: str) -> str:
 
 🛒 Conheça a Listinha: sua lista de compras no WhatsApp.
 
-Acabou aquela estória de quem esqueceu de comprar o que no supermercado! 😄
+Acabou aquela estória de chegar do supermercado e ver que esqueceu de comprar isso ou aquilo! 😄
 Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
 A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
 
@@ -139,7 +139,7 @@ Gostaria de experimentar por 1 mês grátis?
 
 Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
 
-Quer saber um pouco mais sobre a listinha? Consulte nosso site: https://listinha-landing.onrender.com
+Quer saber um pouco mais sobre a listinha? Visite nosso site: https://listinha-landing.onrender.com
 
 Dica: se após experimentar por um mês você gostar e indicar para amigos, ganhará mais 2 meses grátis.
 """
