@@ -20,8 +20,25 @@ import time
 import pytz
 import phonenumbers
 from phonenumbers import NumberParseException
-from messages import *
 import unicodedata
+from messages import (
+    # Basic messages / errors
+    ALREADY_IN_LIST, NAMELESS_OPENING, ADD_USER_USAGE, NOT_IN_LIST,
+    INVALID_NUMBER, NOT_ADMIN, INVALID_SELF_EXIT,
+    CANNOT_EXIT_AS_ADMIN, NO_PENDING_TRANSFER, LIST_EMPTY_PDF, UNKNOWN_COMMAND,
+    NOT_OWNER_CANNOT_REMOVE, SELF_EXIT_INSTRUCTION, NOT_OWNER_CANNOT_TRANSFER,
+    NOT_OWNER_CANNOT_RENAME, NOT_OWNER_CANNOT_CLEAR,
+
+    # Dynamic formatters & helpers
+    REMOVED_FROM_LIST, MEMBER_LEFT_NOTIFICATION, list_created, item_added_log,
+    item_already_exists, item_removed, item_not_found,
+    guest_added, guest_removed, guest_already_in_other_list, transfer_proposed,
+    not_a_guest, list_title_updated, list_download_url,
+    list_shown, list_detailed_url, not_a_member, indication_text,
+    z_step1_instructions, NEED_REFRESH_VIEW, item_index_invalid,
+    LIST_CLEARED, WELCOME_MESSAGE, TRANSFER_ACCEPTED, TRANSFER_PREVIOUS_OWNER,
+    LEFT_LIST, HELP_TEXT, MENU_TEXT, list_members,
+)
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")

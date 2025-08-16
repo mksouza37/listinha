@@ -206,6 +206,27 @@ MENU_TEXT = (
     "https://listinha-t5ga.onrender.com/static/comandos.html"
 )
 
+def indication_text(display_number: str) -> str:
+    local = br_local_number(display_number)  # e.g. '11999999999'
+    return f"""Experimentei e achei interessante. Estou compartilhando.
+
+🛒 Conheça a Listinha: sua lista de compras no WhatsApp.
+
+Acabou aquela estória de chegar do supermercado e ver que esqueceu de comprar isso ou aquilo! 😄
+Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
+A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
+
+Gostaria de experimentar por 1 mês grátis?
+
+📞 No seu WhatsApp digite: {local} e acione conversar
+✍️ Envie: listinha "seu nome". Ex.: listinha Patrícia
+
+Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
+
+Quer saber um pouco mais sobre a listinha? Visite nosso site: https://listinha-landing.onrender.com
+
+Dica: se após experimentar por um mês você gostar e indicar para amigos, ganhará mais 2 meses grátis.
+"""
 
 def list_members(entries):
     return "👥 *Pessoas na Listinha:*\n\n" + (
