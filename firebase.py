@@ -101,7 +101,7 @@ def get_items(phone):
 def clear_items(phone):
     group = get_user_group(phone)
     doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
-    db.collection("listas").document(doc_id).set({"itens": []})
+    db.collection("listas").document(doc_id).set({"itens": []}, merge=True)
 
 def delete_item(phone, item):
     group = get_user_group(phone)

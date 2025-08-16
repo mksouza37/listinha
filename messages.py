@@ -47,6 +47,7 @@ TRANSFER_RECEIVED = (
 NOT_OWNER_CANNOT_RENAME = "❌ Só o Dono da Listinha pode mudar o título."
 NOT_OWNER_CANNOT_CLEAR = "❌ Só o Dono da Listinha pode limpar todos os itens."
 
+
 # Dynamic messages
 
 def REMOVED_FROM_LIST(admin_display_name: str) -> str:
@@ -55,8 +56,10 @@ def REMOVED_FROM_LIST(admin_display_name: str) -> str:
         "Se foi engano, peça um novo convite."
     )
 
+
 def MEMBER_LEFT_NOTIFICATION(leaver_display: str) -> str:
     return f"👋 {leaver_display} saiu da sua Listinha."
+
 
 def list_created(name_or_phone):
     return (
@@ -64,23 +67,42 @@ def list_created(name_or_phone):
         "Vamos começar? Digite `i <item>` para incluir o primeiro item."
     )
 
+
 def item_added_log(item):
     return f"✅ Item *{item}* incluído na sua Listinha."
+
 
 def item_already_exists(item):
     return f"⚠️ O item *{item}* já está na sua Listinha 😉"
 
+
 def item_removed(item):
     return f"🗑️ Item *{item}* removido da sua Listinha."
+
 
 def item_not_found(item):
     return f"🔎 Não encontrei o item *{item}* na sua Listinha."
 
+
+def br_local_number(num: str) -> str:
+    """Return the Brazilian local form without country code.
+    Ex.: '+55 11 91270-5543' -> '11912705543'"""
+    digits = "".join(ch for ch in (num or "") if ch.isdigit())
+    # Drop leading '55' only when it looks like E.164 (12–13 digits total for BR)
+    if digits.startswith("55") and len(digits) >= 12:
+        return digits[2:]
+    return digits
+
+
 def guest_added(name, phone):
     return f"👥 Convidado *{name or phone}* adicionado à sua Listinha. Bem-vindo(a)! ✨"
 
+
 def guest_removed(name, phone):
-    return f"👋 Convidado *{name or phone}* foi removido da sua Listinha."
+    # ✅ Show both name and local phone without +55
+    display = f"{name} — {br_local_number(phone)}" if name else br_local_number(phone)
+    return f"👋 Convidado *{display}* foi removido da sua Listinha."
+
 
 def guest_already_in_other_list(phone):
     return (
@@ -88,20 +110,25 @@ def guest_already_in_other_list(phone):
         "Peça para a pessoa sair da outra antes de entrar aqui."
     )
 
+
 def transfer_proposed(phone):
     return (
         f"📤 Enviamos o convite para *{phone}* se tornar o *Dono* desta Listinha. "
         "Aguarde a aceitação."
     )
 
+
 def not_a_guest(phone):
     return f"⚠️ O número *{phone}* não faz parte desta Listinha."
+
 
 def list_title_updated(title):
     return f"🏷️ Título atualizado com sucesso: *{title}*"
 
+
 def list_download_pdf(title, count, url):
     return f"📄 *{title}* tem {count} itens.\nAbra aqui para visualizar: {url}"
+
 
 def list_shown(title, items):
     """
@@ -114,74 +141,23 @@ def list_shown(title, items):
     else:
         return "🗒️ *{title}* está vazia. Digite `i <item>` para incluir o primeiro item.".format(title=title)
 
+
 def list_download_url(url):
     return f"📎 Aqui está o PDF da sua Listinha:\n{url}"
+
 
 def list_detailed_url(url):
     return "📎 Sua Listinha detalhada (com quem incluiu e quando) está pronta:\n{url}".format(url=url)
 
+
 def not_a_member(phone):
     return f"⚠️ O número *{phone}* não participa desta Listinha."
 
-# messages.py
-
-def br_local_number(num: str) -> str:
-    """Return the Brazilian local form without country code.
-    Ex.: '+55 11 91270-5543' -> '11912705543'"""
-    digits = "".join(ch for ch in (num or "") if ch.isdigit())
-    # Drop leading '55' only when it looks like E.164 (12–13 digits total for BR)
-    if digits.startswith("55") and len(digits) >= 12:
-        return digits[2:]
-    return digits
-
-def indication_text(display_number: str) -> str:
-    local = br_local_number(display_number)  # e.g. '11999999999'
-    return f"""Experimentei e achei interessante. Estou compartilhando.
-
-🛒 Conheça a Listinha: sua lista de compras no WhatsApp.
-
-Acabou aquela estória de chegar do supermercado e ver que esqueceu de comprar isso ou aquilo! 😄
-Com a Listinha, qualquer um da família pode adicionar itens pelo WhatsApp na hora que lembra. 
-A lista fica disponível para todos, a qualquer momento — e no dia da compra, já está prontinha!
-
-Gostaria de experimentar por 1 mês grátis?
-
-📞 No seu WhatsApp digite: {local} e acione conversar
-✍️ Envie: listinha "seu nome". Ex.: listinha Patrícia
-
-Pronto! Sua listinha estará criada e você receberá orientações sobre como utilizá-la.
-
-Quer saber um pouco mais sobre a listinha? Visite nosso site: https://listinha-landing.onrender.com
-
-Dica: se após experimentar por um mês você gostar e indicar para amigos, ganhará mais 2 meses grátis.
-"""
-
-def z_step1_instructions() -> str:
-    return (
-        "📣 Ajude a divulgar a Listinha!\n\n"
-        "1) COPIE a mensagem que enviei logo após essa.\n"
-        "2) COLE em um grupo ou contato e envie.\n"
-                
-        "Muito obrigado por ajudar na divulgação!\n\n"
-
-        "👇 Mensagem para copiar e enviar."
-    )
-
-NEED_REFRESH_VIEW = "📄 Sua visualização está desatualizada. Envie *v* para ver a lista numerada novamente."
-
-def item_index_invalid(n: int, total: int) -> str:
-    return f"❌ Número {n} não corresponde a nenhum item. Envie *v* para ver a lista numerada ({total} itens)."
-
-def list_shown(title: str, items: list[str]) -> str:
-    if not items:
-        return f"📄 *{title}*\n(sem itens)"
-    lines = [f"{i+1}. {items[i]}" for i in range(len(items))]
-    return f"📄 *{title}* ({len(items)} itens)\n\n" + "\n".join(lines)
 
 LIST_CLEARED = "✅ Sua listinha foi limpa!"
 
 WELCOME_MESSAGE = lambda name, admin: (
-    f"👋 Olá{name and f' *{name}*' or ''}! {admin} adicionou você a uma *Listinha compartilhada* no WhatsApp.\n\n"
+    f"👋 Olá{name and f' *{name}*' or ''}! {admin} adicionou você a uma *Listinha* no WhatsApp.\n\n"
     "📖 *O que é a Listinha?*\n"
     "É uma lista de compras compartilhada onde todos podem ver e incluir itens em tempo real.\n\n"
     "🛠️ *Como funciona:*\n"
@@ -209,11 +185,11 @@ HELP_TEXT = (
     "2️⃣ Os convidados podem incluir ou remover itens.\n"
     "3️⃣ O Dono pode limpar a lista inteira ou remover convidados.\n"
     "4️⃣ A lista é atualizada para todos instantaneamente.\n\n"
-    "💡 *Dica:* Use o comando m para ver todos os comandos disponíveis."
+    "💡 *Dica:* Use o comando M para ver todos os comandos disponíveis."
 )
 
 MENU_TEXT = (
-    "📝 *Listinha Menu*:\n\n"    
+    "📝 *Listinha Menu*:\n\n"
     "• i — Incluir um item na lista\n"
     "   Formato: `i <item>`\n"
     "   📌 ex.: `i água`\n"
@@ -230,5 +206,33 @@ MENU_TEXT = (
     "https://listinha-t5ga.onrender.com/static/comandos.html"
 )
 
+
 def list_members(entries):
-    return "👥 *Pessoas na Listinha:*\n\n" + ("\n".join(entries) if entries else "(Ainda não há participantes além do Dono.)")
+    return "👥 *Pessoas na Listinha:*\n\n" + (
+        "\n".join(entries) if entries else "(Ainda não há participantes além do Dono.)")
+
+
+def z_step1_instructions() -> str:
+    return (
+        "📣 Ajude a divulgar a Listinha!\n\n"
+        "1) COPIE a mensagem que enviei logo após essa.\n"
+        "2) COLE em um grupo ou contato e envie.\n"
+
+        "Muito obrigado por ajudar na divulgação!\n\n"
+
+        "👇 Mensagem para copiar e enviar."
+    )
+
+
+NEED_REFRESH_VIEW = "📄 Sua visualização está desatualizada. Envie *v* para ver a lista numerada novamente."
+
+
+def item_index_invalid(n: int, total: int) -> str:
+    return f"❌ Número {n} não corresponde a nenhum item. Envie *v* para ver a lista numerada ({total} itens)."
+
+
+def list_shown(title: str, items: list[str]) -> str:
+    if not items:
+        return f"📄 *{title}*\n(sem itens)"
+    lines = [f"{i + 1}. {items[i]}" for i in range(len(items))]
+    return f"📄 *{title}* ({len(items)} itens)\n\n" + "\n".join(lines)

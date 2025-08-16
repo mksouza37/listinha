@@ -86,6 +86,176 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
 
     return None  # Fallback for any failure
 
+# ---------- Helpers to send updated views ----------
+
+def current_doc_id(phone: str) -> str:
+    group = get_user_group(phone) or {}
+    return f"{group.get('instance','default')}__{group.get('owner', phone)}__{group.get('list','default')}"
+
+def save_view_snapshot(phone: str, items: list[str]) -> None:
+    """Persist the user's last alphabetized view as a 1..N → text mapping."""
+    firestore.client().collection("users").document(phone).set({
+        "last_view_snapshot": {
+            "doc_id": current_doc_id(phone),
+            "items": items,
+            "ts_epoch": int(datetime.now(timezone.utc).timestamp()),
+        }
+    }, merge=True)
+
+def load_view_snapshot(phone: str):
+    doc = firestore.client().collection("users").document(phone).get()
+    if not doc.exists:
+        return None
+    return (doc.to_dict() or {}).get("last_view_snapshot") or {}
+
+SNAPSHOT_TTL_SECONDS = 600  # 10 minutos
+
+def snapshot_is_fresh(ts_epoch) -> bool:
+    try:
+        now = int(datetime.now(timezone.utc).timestamp())
+        return (now - int(ts_epoch)) <= SNAPSHOT_TTL_SECONDS
+    except Exception:
+        return False
+
+def send_message(to, body):
+    """
+    Envia mensagem de texto via WhatsApp Cloud API (Meta).
+    Aceita 'to' como "whatsapp:+55119..." ou "+55119..." ou "55119...".
+    """
+    try:
+        to_norm = (to or "").replace("whatsapp:", "").strip()
+        if to_norm.startswith("+"):
+            to_norm = to_norm[1:]
+
+        url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_norm,
+            "type": "text",
+            "text": {"body": body[:4096]}  # pequeno limite de segurança
+        }
+        print(f"📤 META OUT → to=+{to_norm} chars={len(body)}")
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        try:
+            r.raise_for_status()
+        except Exception:
+            # 🔎 Extra debug: show Graph API error payload to pinpoint cause
+            try:
+                print("META ERROR BODY:", r.text)
+            except Exception:
+                pass
+            raise  # rethrow for the outer except
+
+        resp = r.json()
+        msg_id = (resp.get("messages") or [{}])[0].get("id")
+        print(f"✅ Enviado via Meta. id={msg_id}")
+    except Exception as e:
+        print("❌ Erro ao enviar via Meta:", str(e))
+
+def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
+    with open("templates/list.html", encoding="utf-8") as f:
+        html = f.read()
+    template = Template(html)
+
+    doc_id_encoded = quote(doc_id, safe="")
+    return template.render(
+        doc_id=doc_id_encoded,
+        items=items,
+        count=len(items),
+        title=title,
+        updated_at=updated_at,
+        show_footer=show_footer,
+        timestamp=int(datetime.now().timestamp()),
+        mode=mode
+    )
+
+def normalize_text(s: str) -> str:
+    """
+    Lowercase, remove accents/diacritics, and collapse inner spaces.
+    Ex.: '  PÃO   de   Açúcar  ' -> 'pao de acucar'
+    """
+    if not s:
+        return ""
+    # NFD split + remove combining marks (accents)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    # lowercase + collapse whitespace
+    s = " ".join(s.lower().split())
+    return s
+
+def _send_current_list(from_number: str, phone: str) -> None:
+    """Send the current list view (same behavior as /v) right after a change."""
+    raw_items = get_items(phone)  # already A→Z
+    items = [entry["item"] if isinstance(entry, dict) and "item" in entry else str(entry) for entry in raw_items]
+
+    # Save snapshot for numbered deletes
+    save_view_snapshot(phone, items)
+
+    # Build doc id & fetch title
+    group = get_user_group(phone)
+    raw_doc_id = current_doc_id(phone)
+
+    # Title fallback
+    title = "Sua Listinha"
+    try:
+        ref = firestore.client().collection("listas").document(raw_doc_id)
+        doc = ref.get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            title = data.get("title") or title
+    except Exception:
+        pass
+
+    # If many items, send PDF link; else bullets
+    if len(items) > 20:
+        timestamp = int(time.time())
+        doc_id = quote(raw_doc_id, safe="")
+        pdf_url = f"https://listinha-t5ga.onrender.com/view?g={doc_id}&format=pdf&footer=true&&t={timestamp}"
+        send_message(from_number, list_download_url(pdf_url))
+    else:
+        send_message(from_number, list_shown(title, items))
+
+def _send_people_list(from_number: str, phone: str) -> None:
+    """Send the numbered people list with local phone format (no +55)."""
+    group = get_user_group(phone)
+
+    users_ref = firestore.client().collection("users")
+    same_list_users = (
+        users_ref
+        .where("group.owner", "==", group["owner"])
+        .where("group.list", "==", group["list"])
+        .where("group.instance", "==", group.get("instance", "default"))
+        .stream()
+    )
+
+    members = []
+    for udoc in same_list_users:
+        data = udoc.to_dict() or {}
+        grp = data.get("group", {})
+        name = (data.get("name") or "").strip()
+        phone_e164 = udoc.id  # ex.: +55119...
+
+        is_owner = (grp.get("role") == "admin" and grp.get("owner") == group["owner"])
+
+        # display phone without +55
+        phone_display = br_local_number(phone_e164)
+
+        line = f"{name} — {phone_display}" if name else f"{phone_display}"
+        if is_owner:
+            line += " (Dono)"
+
+        sort_key = (0 if is_owner else 1, (name or phone_display).lower())
+        members.append((sort_key, line))
+
+    members.sort(key=lambda t: t[0])
+    member_lines = [f"{i+1}. {line}" for i, (_, line) in enumerate(members)]
+
+    send_message(from_number, list_members(member_lines))
+
 @app.get("/view")
 def unified_view(
     g: str,
@@ -196,7 +366,6 @@ def unified_view(
         html_content = render_list_page(
             g, items, title=title, updated_at=updated_at, show_footer=show_footer, mode="vc"
         )
-
 
     else:
         # Modo normal (bullet list)
@@ -316,7 +485,10 @@ async def whatsapp_webhook(request: Request):
 
         if cmd == "/listinha":
             raw = (arg or "").strip()
-            name = raw.strip('"').strip()[:20]  # tolerates quotes: listinha "Ana"
+            # Keep quotes, but normalize capitalization of first letter as a courtesy
+            name = raw.strip('"').strip()[:20]
+            if name:
+                name = name.capitalize()
 
             if not name:
                 send_message(from_number,NAMELESS_OPENING)
@@ -327,6 +499,8 @@ async def whatsapp_webhook(request: Request):
             else:
                 create_new_list(phone, instance_id, name)
                 send_message(from_number, list_created(f"*{name}*"))
+                # Optional: immediately show empty (or default) list
+                _send_current_list(from_number, phone)
             return {"status": "ok"}
 
         # Check if user exists before other commands
@@ -340,11 +514,12 @@ async def whatsapp_webhook(request: Request):
             if added:
                 send_message(from_number, item_added_log(arg))
                 print(f"✅ Item adicionado: {arg}")
+                # (1) Show updated list right after action
+                _send_current_list(from_number, phone)
             else:
                 send_message(from_number, item_already_exists(arg))
             return {"status": "ok"}
 
-        # Delete item: a <número | texto>
         # Delete item: a <número | texto>
         if cmd == "/a" and arg:
             wanted = arg.strip()
@@ -369,6 +544,8 @@ async def whatsapp_webhook(request: Request):
                 canonical = snap_items[idx - 1]
                 delete_item(phone, canonical)
                 send_message(from_number, item_removed(canonical))
+                # (1) Show updated list right after action
+                _send_current_list(from_number, phone)
                 return {"status": "ok"}
 
             # Otherwise fall back to text delete (accent-insensitive)
@@ -389,6 +566,8 @@ async def whatsapp_webhook(request: Request):
 
             delete_item(phone, match_text)
             send_message(from_number, item_removed(match_text))
+            # (1) Show updated list right after action
+            _send_current_list(from_number, phone)
             return {"status": "ok"}
 
         # Add new user (u <phone> [name])
@@ -404,7 +583,8 @@ async def whatsapp_webhook(request: Request):
                 return {"status": "ok"}
 
             phone_part, name_raw = parts[0], parts[1].strip()
-            name = name_raw[:20]
+            # (5) Capitalize first letter of user's name
+            name = name_raw[:20].capitalize()
 
             target_phone = normalize_phone(phone_part, phone)
             if not target_phone:
@@ -427,6 +607,9 @@ async def whatsapp_webhook(request: Request):
 
                 send_message(f"whatsapp:{target_phone}", WELCOME_MESSAGE(name, admin_display_name))
 
+                # (3) Show updated people list
+                _send_people_list(from_number, phone)
+
             elif status == "already_in_list":
                 send_message(from_number, guest_already_in_other_list(target_phone))
 
@@ -443,9 +626,15 @@ async def whatsapp_webhook(request: Request):
                 send_message(from_number, NOT_OWNER_CANNOT_REMOVE)
                 return {"status": "ok"}
 
+            # Fetch name BEFORE removal to display later
+            tdoc = firestore.client().collection("users").document(target_phone).get()
+            tname = ""
+            if tdoc.exists:
+                tname = (tdoc.to_dict() or {}).get("name", "").strip()
+
             if remove_user_from_list(phone, target_phone):
-                # confirm to admin
-                send_message(from_number, guest_removed("", target_phone))
+                # (6) confirm to admin with number and name
+                send_message(from_number, guest_removed(tname, target_phone))
 
                 # notify removed user with admin display name
                 admin_data = firestore.client().collection("users").document(phone).get().to_dict()
@@ -453,6 +642,9 @@ async def whatsapp_webhook(request: Request):
                 admin_display_name = f"*{admin_name}*" if admin_name else phone
 
                 send_message(f"whatsapp:{target_phone}", REMOVED_FROM_LIST(admin_display_name))
+
+                # (3) Show updated people list
+                _send_people_list(from_number, phone)
             else:
                 send_message(from_number, not_a_member(target_phone))
             return {"status": "ok"}
@@ -522,8 +714,8 @@ async def whatsapp_webhook(request: Request):
                 send_message(from_number, NO_PENDING_TRANSFER)
             return {"status": "ok"}
 
-        # Admin can define custom list title: b <title>
-        if cmd == "/b" and arg:
+        # Admin can define custom list title: r <title>
+        if cmd == "/r" and arg:
             if not is_admin(phone):
                 send_message(from_number, NOT_OWNER_CANNOT_RENAME)
                 return {"status": "ok"}
@@ -531,8 +723,11 @@ async def whatsapp_webhook(request: Request):
             group = get_user_group(phone)
             doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
             ref = firestore.client().collection("listas").document(doc_id)
-            ref.update({"title": arg.strip().capitalize()})
-            send_message(from_number, list_title_updated(arg.strip().capitalize()))
+            new_title = arg.strip().capitalize()
+            ref.update({"title": new_title})
+            send_message(from_number, list_title_updated(new_title))
+            # (2) Show list with new title
+            _send_current_list(from_number, phone)
             return {"status": "ok"}
 
         # Menu
@@ -547,42 +742,9 @@ async def whatsapp_webhook(request: Request):
             send_message(from_number, HELP_TEXT)
             return {"status": "ok"}
 
-        # Consultar pessoas na lista: p (all)
-        # /p — listar participantes: "Nome — +telefone" (ou só +telefone se sem nome)
+        # Consultar pessoas na lista: p (all) — numbered, no +55
         if cmd == "/p":
-            group = get_user_group(phone)  # {"owner","list","instance",...}
-
-            users_ref = firestore.client().collection("users")
-            same_list_users = (
-                users_ref
-                .where("group.owner", "==", group["owner"])
-                .where("group.list", "==", group["list"])
-                .where("group.instance", "==", group.get("instance", "default"))
-                .stream()
-            )
-
-            members = []
-            for udoc in same_list_users:
-                data = udoc.to_dict() or {}
-                grp = data.get("group", {})
-                name = (data.get("name") or "").strip()
-                phone_e164 = udoc.id  # ex.: +55119...
-
-                is_owner = (grp.get("role") == "admin" and grp.get("owner") == group["owner"])
-
-                # se tem nome → "Nome — +telefone"; senão → "+telefone"
-                line = f"{name} — {phone_e164}" if name else f"{phone_e164}"
-                if is_owner:
-                    line += " (Dono)"
-
-                # Dono primeiro; depois ordena por nome (ou telefone se sem nome)
-                sort_key = (0 if is_owner else 1, (name or phone_e164).lower())
-                members.append((sort_key, line))
-
-            members.sort(key=lambda t: t[0])
-            member_lines = [line for _, line in members]
-
-            send_message(from_number, list_members(member_lines))
+            _send_people_list(from_number, phone)
             return {"status": "ok"}
 
         # View list
@@ -658,6 +820,8 @@ async def whatsapp_webhook(request: Request):
 
             clear_items(phone)
             send_message(from_number, LIST_CLEARED)
+            # (1) Show updated list right after action
+            _send_current_list(from_number, phone)
             return {"status": "ok"}
 
         if cmd == "/z":
@@ -677,109 +841,3 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
-
-def send_message(to, body):
-    """
-    Envia mensagem de texto via WhatsApp Cloud API (Meta).
-    Aceita 'to' como "whatsapp:+55119..." ou "+55119..." ou "55119...".
-    """
-    try:
-        to_norm = (to or "").replace("whatsapp:", "").strip()
-        if to_norm.startswith("+"):
-            to_norm = to_norm[1:]
-
-        url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
-        headers = {
-            "Authorization": f"Bearer {META_ACCESS_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": to_norm,
-            "type": "text",
-            "text": {"body": body[:4096]}  # pequeno limite de segurança
-        }
-        print(f"📤 META OUT → to=+{to_norm} chars={len(body)}")
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
-        try:
-            r.raise_for_status()
-        except Exception:
-            # 🔎 Extra debug: show Graph API error payload to pinpoint cause
-            try:
-                print("META ERROR BODY:", r.text)
-            except Exception:
-                pass
-            raise  # rethrow for the outer except
-
-        resp = r.json()
-        msg_id = (resp.get("messages") or [{}])[0].get("id")
-        print(f"✅ Enviado via Meta. id={msg_id}")
-    except Exception as e:
-        print("❌ Erro ao enviar via Meta:", str(e))
-
-def get_items_from_doc_id(doc_id):
-    ref = firestore.client().collection("listas").document(doc_id)
-    doc = ref.get()
-    items = doc.to_dict()["itens"] if doc.exists else []
-    return sorted(items, key=collator.getSortKey)
-
-def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
-    with open("templates/list.html", encoding="utf-8") as f:
-        html = f.read()
-    template = Template(html)
-
-    doc_id_encoded = quote(doc_id, safe="")
-    return template.render(
-        doc_id=doc_id_encoded,
-        items=items,
-        count=len(items),
-        title=title,
-        updated_at=updated_at,
-        show_footer=show_footer,
-        timestamp=int(datetime.now().timestamp()),
-        mode=mode
-    )
-
-def normalize_text(s: str) -> str:
-    """
-    Lowercase, remove accents/diacritics, and collapse inner spaces.
-    Ex.: '  PÃO   de   Açúcar  ' -> 'pao de acucar'
-    """
-    if not s:
-        return ""
-    # NFD split + remove combining marks (accents)
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
-    # lowercase + collapse whitespace
-    s = " ".join(s.lower().split())
-    return s
-
-SNAPSHOT_TTL_SECONDS = 600  # 10 minutos
-
-def current_doc_id(phone: str) -> str:
-    group = get_user_group(phone) or {}
-    return f"{group.get('instance','default')}__{group.get('owner', phone)}__{group.get('list','default')}"
-
-def save_view_snapshot(phone: str, items: list[str]) -> None:
-    """Persist the user's last alphabetized view as a 1..N → text mapping."""
-    firestore.client().collection("users").document(phone).set({
-        "last_view_snapshot": {
-            "doc_id": current_doc_id(phone),
-            "items": items,
-            "ts_epoch": int(datetime.now(timezone.utc).timestamp()),
-        }
-    }, merge=True)
-
-def load_view_snapshot(phone: str):
-    doc = firestore.client().collection("users").document(phone).get()
-    if not doc.exists:
-        return None
-    return (doc.to_dict() or {}).get("last_view_snapshot") or {}
-
-def snapshot_is_fresh(ts_epoch) -> bool:
-    try:
-        now = int(datetime.now(timezone.utc).timestamp())
-        return (now - int(ts_epoch)) <= SNAPSHOT_TTL_SECONDS
-    except Exception:
-        return False
-
