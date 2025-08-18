@@ -171,6 +171,43 @@ def send_message(to, body):
     except Exception as e:
         print("❌ Erro ao enviar via Meta:", str(e))
 
+def send_video(to, video_url, caption=""):
+    """
+    Envia um pequeno vídeo via WhatsApp Cloud API.
+    'video_url' deve ser HTTPS público (ex.: https://.../static/listinha-demo.mp4)
+    """
+    try:
+        to_norm = (to or "").replace("whatsapp:", "").strip()
+        if to_norm.startswith("+"):
+            to_norm = to_norm[1:]
+
+        url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_norm,
+            "type": "video",
+            "video": {
+                "link": video_url,
+                "caption": caption[:1024] if caption else None
+            }
+        }
+        print(f"📤 META OUT (video) → to=+{to_norm} url={video_url}")
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        r.raise_for_status()
+        resp = r.json()
+        msg_id = (resp.get("messages") or [{}])[0].get("id")
+        print(f"✅ Vídeo enviado via Meta. id={msg_id}")
+    except Exception as e:
+        try:
+            print("META ERROR BODY (video):", r.text)
+        except Exception:
+            pass
+        print("❌ Erro ao enviar vídeo via Meta:", str(e))
+
 def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
@@ -846,6 +883,10 @@ async def whatsapp_webhook(request: Request):
             # 2) Ready-to-copy message
             full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
             send_message(from_number, full_text)
+
+            # 3) Short demo video
+            demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
+            send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
 
             return {"status": "ok"}
 
