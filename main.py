@@ -208,6 +208,31 @@ def send_video(to, video_url, caption=""):
             pass
         print("❌ Erro ao enviar vídeo via Meta:", str(e))
 
+import requests
+import os
+
+META_TOKEN = os.getenv("META_ACCESS_TOKEN")
+PHONE_ID   = os.getenv("META_PHONE_NUMBER_ID")
+API_VER    = os.getenv("META_API_VERSION", "v21.0")  # whatever you're using
+
+def send_gif(to_phone_e164: str, domain_url: str):
+    url = f"https://graph.facebook.com/{API_VER}/{PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": to_phone_e164,
+        "type": "image",
+        "image": {
+            "link": f"{domain_url}/static/listinha-demo-loop.gif",
+            # "caption": "Listinha em ação 😉"  # optional
+        },
+    }
+    r = requests.post(url, headers=headers, json=data, timeout=20)
+    r.raise_for_status()
+
 def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
     with open("templates/list.html", encoding="utf-8") as f:
         html = f.read()
@@ -884,9 +909,13 @@ async def whatsapp_webhook(request: Request):
             full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
             send_message(from_number, full_text)
 
-            # 3) Short demo video
-            demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
-            send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
+            # 3) Short demo GIF
+            demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo-loop.gif"
+            send_gif(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
+
+            ## 3) Short demo video
+            #demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
+            #send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
 
             return {"status": "ok"}
 
