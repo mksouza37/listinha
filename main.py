@@ -208,14 +208,11 @@ def send_video(to, video_url, caption=""):
             pass
         print("❌ Erro ao enviar vídeo via Meta:", str(e))
 
-import requests
-import os
-
-META_TOKEN = os.getenv("META_ACCESS_TOKEN")
-PHONE_ID   = os.getenv("META_PHONE_NUMBER_ID")
-API_VER    = os.getenv("META_API_VERSION", "v21.0")  # whatever you're using
-
-def send_gif(to_phone_e164: str, domain_url: str):
+def send_gif(to_number: str, gif_url: str, caption: str = None):
+    """
+    Send an animated GIF via WhatsApp Cloud API.
+    GIFs are sent as type='image'. 'caption' is optional.
+    """
     url = f"https://graph.facebook.com/{API_VER}/{PHONE_ID}/messages"
     headers = {
         "Authorization": f"Bearer {META_TOKEN}",
@@ -223,15 +220,21 @@ def send_gif(to_phone_e164: str, domain_url: str):
     }
     data = {
         "messaging_product": "whatsapp",
-        "to": to_phone_e164,
+        "to": to_number,
         "type": "image",
-        "image": {
-            "link": f"{domain_url}/static/listinha-demo-loop.gif",
-            # "caption": "Listinha em ação 😉"  # optional
-        },
+        "image": {"link": gif_url},
     }
+    if caption:
+        data["image"]["caption"] = caption
+
     r = requests.post(url, headers=headers, json=data, timeout=20)
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except requests.HTTPError as e:
+        # Log useful context
+        print("❌ send_gif error:", e, "response:", r.text)
+        raise
+    return r.json()
 
 def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
     with open("templates/list.html", encoding="utf-8") as f:
