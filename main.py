@@ -208,14 +208,20 @@ def send_video(to, video_url, caption=""):
             pass
         print("❌ Erro ao enviar vídeo via Meta:", str(e))
 
-def send_gif(to_number: str, gif_url: str, caption: str = None):
+import os, requests
+
+META_ACCESS_TOKEN   = os.getenv("META_ACCESS_TOKEN", "")
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
+META_API_VERSION     = os.getenv("META_API_VERSION", "v21.0")
+
+def send_gif(to_number: str, gif_url: str, caption: str | None = None):
     """
     Send an animated GIF via WhatsApp Cloud API.
-    GIFs are sent as type='image'. 'caption' is optional.
+    Uses type='image' with a hosted GIF URL. 'caption' is optional.
     """
-    url = f"https://graph.facebook.com/{API_VER}/{PHONE_ID}/messages"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {META_TOKEN}",
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
         "Content-Type": "application/json",
     }
     data = {
@@ -231,8 +237,7 @@ def send_gif(to_number: str, gif_url: str, caption: str = None):
     try:
         r.raise_for_status()
     except requests.HTTPError as e:
-        # Log useful context
-        print("❌ send_gif error:", e, "response:", r.text)
+        print("❌ send_gif error:", e, "| response:", r.text)
         raise
     return r.json()
 
