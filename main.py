@@ -208,17 +208,7 @@ def send_video(to, video_url, caption=""):
             pass
         print("❌ Erro ao enviar vídeo via Meta:", str(e))
 
-import os, requests
-
-META_ACCESS_TOKEN   = os.getenv("META_ACCESS_TOKEN", "")
-META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
-META_API_VERSION     = os.getenv("META_API_VERSION", "v21.0")
-
-def send_gif(to_number: str, gif_url: str, caption: str | None = None):
-    """
-    Send an animated GIF via WhatsApp Cloud API.
-    Uses type='image' with a hosted GIF URL. 'caption' is optional.
-    """
+def send_gif_by_id(to_number: str, media_id: str, caption: str | None = None):
     url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {META_ACCESS_TOKEN}",
@@ -227,19 +217,34 @@ def send_gif(to_number: str, gif_url: str, caption: str | None = None):
     data = {
         "messaging_product": "whatsapp",
         "to": to_number,
-        "type": "image",
-        "image": {"link": gif_url},
+        "type": "image",            # GIFs are sent as 'image'
+        "image": {"id": media_id},  # <-- use media_id instead of link
     }
     if caption:
         data["image"]["caption"] = caption
-
     r = requests.post(url, headers=headers, json=data, timeout=20)
     try:
         r.raise_for_status()
     except requests.HTTPError as e:
-        print("❌ send_gif error:", e, "| response:", r.text)
+        print("❌ send_gif_by_id error:", e, "| response:", r.text)
         raise
     return r.json()
+
+def upload_gif_local(path_to_gif: str) -> str:
+    """
+    Upload a local GIF file to WhatsApp and return media_id.
+    """
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/media"
+    headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
+    files = {"file": open(path_to_gif, "rb")}
+    data = {"messaging_product": "whatsapp"}
+    r = requests.post(url, headers=headers, files=files, data=data, timeout=60)
+    try:
+        r.raise_for_status()
+    except requests.HTTPError as e:
+        print("❌ upload_gif_local error:", e, "| response:", r.text)
+        raise
+    return r.json()["id"]
 
 def render_list_page(doc_id, items, title="Sua Listinha", updated_at="", show_footer=True, mode="normal"):
     with open("templates/list.html", encoding="utf-8") as f:
@@ -917,9 +922,14 @@ async def whatsapp_webhook(request: Request):
             full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
             send_message(from_number, full_text)
 
-            # 3) Short demo GIF
-            demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo-loop.gif"
-            send_gif(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
+            # 3) Upload + send GIF (auto-loop in chat)
+            gif_path = "static/listinha-demo-loop.gif"  # ensure this exists in your container
+            media_id = upload_gif_local(gif_path)
+            send_gif_by_id(from_number, media_id, caption="👀 Veja a Listinha em ação em poucos segundos.")
+
+            ## 3) Short demo GIF
+            #demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo-loop.gif"
+            #send_gif(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
 
             ## 3) Short demo video
             #demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
