@@ -12,6 +12,13 @@ from firebase import get_user_doc, admin_verify_password  # uses your store help
 security = HTTPBasic()
 router = APIRouter()
 
+@router.get("/admin/seed")
+def seed_admin():
+    from firebase import admin_set_password
+    admin_set_password("markus", "A_STRONG_PASSWORD")
+    return {"ok": True}
+
+
 def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> str:
     """
     Auth check order:
