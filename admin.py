@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/admin/seed")
 def seed_admin():
     from firebase import admin_set_password
-    admin_set_password("markus", "A_STRONG_PASSWORD")
+    admin_set_password("Markus", "Ultimas1@")
     return {"ok": True}
 
 
