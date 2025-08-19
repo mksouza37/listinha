@@ -12,13 +12,6 @@ from firebase import get_user_doc, admin_verify_password  # uses your store help
 security = HTTPBasic()
 router = APIRouter()
 
-@router.get("/admin/seed")
-def seed_admin():
-    from firebase import admin_set_password
-    admin_set_password("Markus", "Ultimas1@")
-    return {"ok": True}
-
-
 def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> str:
     """
     Auth check order:
@@ -57,10 +50,10 @@ def _normalize_phone(raw: str, default_region: str = "BR") -> str | None:
         return None
 
 @router.get("/admin", response_class=HTMLResponse)
-def admin_home(_: str = Depends(require_admin)):
+def admin_home(who: str = Depends(require_admin)):   # pass who
     with open("templates/admin.html", encoding="utf-8") as f:
         tpl = Template(f.read())
-    return tpl.render(query="", error="", result=None, who="")
+    return tpl.render(query="", error="", result=None, who=who)
 
 @router.post("/admin/lookup", response_class=HTMLResponse)
 def admin_lookup(
@@ -89,3 +82,10 @@ def admin_lookup(
         "billing": (user.get("billing") or {}),  # Phase 2 will fill this
     }
     return tpl.render(query=e164, error="", result=derived, who=who)
+
+@router.get("/admin/seed")
+def seed_admin():
+    from firebase import admin_set_password
+    admin_set_password("Markus", "Ultimas1@")
+    return {"ok": True}
+

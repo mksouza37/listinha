@@ -37,12 +37,11 @@ from messages import (
     LIST_CLEARED, WELCOME_MESSAGE, TRANSFER_ACCEPTED, TRANSFER_PREVIOUS_OWNER,
     LEFT_LIST, HELP_TEXT, MENU_TEXT, list_members, br_local_number,
 )
-from admin import router as admin_router  # NEW
+from admin import router as admin_router
+
 app = FastAPI()
-
-app.include_router(admin_router)
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(admin_router)
 PUBLIC_DISPLAY_NUMBER = os.getenv("PUBLIC_DISPLAY_NUMBER", "+55 11 91270-5543")  # your real number
 
 # Map do seu número (phone_number_id da Meta) para a "instância" usada na sua lógica
@@ -54,6 +53,7 @@ _raw_map = {
 }
 NUMBER_MAP = {k: v for k, v in _raw_map.items() if k}
 
+
 # WhatsApp Cloud API (Meta)
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
@@ -61,6 +61,7 @@ META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
 
 # Token de verificação para o GET do webhook (Meta)
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
+
 
 @app.get("/")
 def root():

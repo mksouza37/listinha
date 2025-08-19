@@ -8,4 +8,5 @@ weasyprint
 PyICU
 pytz
 phonenumbers
+stripe
 

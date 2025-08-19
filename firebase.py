@@ -9,6 +9,7 @@ from datetime import datetime
 import hashlib, secrets
 from typing import Optional
 
+
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
 cred = credentials.Certificate(firebase_creds)
