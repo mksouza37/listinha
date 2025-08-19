@@ -9,7 +9,6 @@ from datetime import datetime
 import hashlib, secrets
 from typing import Optional
 
-
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
 cred = credentials.Certificate(firebase_creds)
@@ -312,13 +311,17 @@ def accept_admin_transfer(user_phone):
 
 # --- System Admin (platform) helpers ---
 
+def get_user_doc(phone: str) -> dict | None:
+    """Return the raw user document for a phone (E.164), or None."""
+    doc = db.collection("users").document(phone).get()
+    return doc.to_dict() if doc.exists else None
+
 def _hash_password(password: str, salt: str) -> str:
     return hashlib.sha256((salt + ":" + password).encode("utf-8")).hexdigest()
 
 def admin_get(username: str) -> Optional[dict]:
-    """admins/{username} doc with fields: active:bool, salt:str, password_hash:str"""
-    ref = db.collection("admins").document(username)
-    doc = ref.get()
+    """admins/{username}: {active: bool, salt: str, password_hash: str, ...}"""
+    doc = db.collection("admins").document(username).get()
     return doc.to_dict() if doc.exists else None
 
 def admin_verify_password(username: str, password: str) -> bool:
@@ -333,12 +336,15 @@ def admin_verify_password(username: str, password: str) -> bool:
     return secrets.compare_digest(computed, stored)
 
 def admin_set_password(username: str, password: str, active: bool = True) -> None:
-    """Create/update a system admin. Run manually to seed admins."""
+    """Seed/update a system admin account."""
     salt = secrets.token_hex(16)
     pwd_hash = _hash_password(password, salt)
-    db.collection("admins").document(username).set({
-        "active": active,
-        "salt": salt,
-        "password_hash": pwd_hash,
-        "created_at": firestore.SERVER_TIMESTAMP,
-    }, merge=True)
+    db.collection("admins").document(username).set(
+        {
+            "active": active,
+            "salt": salt,
+            "password_hash": pwd_hash,
+            "created_at": firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
