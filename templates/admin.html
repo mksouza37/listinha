@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Listinha Admin</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; padding:2rem; }
+    .card { max-width: 760px; margin: 0 auto; background:#fff; border-radius:12px; padding:1.25rem 1.25rem 1.5rem; box-shadow: 0 6px 18px rgba(0,0,0,0.08);}
+    h1 { margin: 0 0 1rem 0; font-size: 1.25rem; }
+    form { display:flex; gap:.5rem; margin-bottom: 1rem; }
+    input[type="text"] { flex:1; padding:.6rem .75rem; border:1px solid #d0d4da; border-radius:8px; font-size: .95rem; }
+    button { padding:.6rem .9rem; border:0; border-radius:8px; background:#111; color:#fff; font-weight:600; cursor:pointer; }
+    .error { color:#b00020; margin:.5rem 0 0; }
+    .section { border-top:1px solid #eee; padding-top:1rem; margin-top:1rem; }
+    table { width:100%; border-collapse: collapse; margin-top:.5rem;}
+    th, td { text-align:left; padding:.35rem .25rem; border-bottom:1px solid #eee; font-size:.94rem; }
+    code { background:#f2f3f5; padding:.1rem .35rem; border-radius:6px; }
+    .muted { color:#666; font-size:.9rem; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem; color:#444; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="topbar">
+      <h1>🔐 Listinha Admin</h1>
+      <div class="muted">Signed in as <strong>{{ who }}</strong></div>
+    </div>
+
+    <form method="post" action="/admin/lookup">
+      <input type="text" name="owner_phone" placeholder="+55 11 91234-5678" value="{{ query|e }}" />
+      <button type="submit">Lookup</button>
+    </form>
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+      <div class="section">
+        <h2>Owner</h2>
+        <table>
+          <tr><th>Phone (doc id)</th><td><code>{{ result.doc_id }}</code></td></tr>
+          <tr><th>Name</th><td>{{ result.name or "—" }}</td></tr>
+          <tr><th>List Role</th><td>{{ result.group_role or "—" }} (Dono/Convidado)</td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>List Context</h2>
+        <table>
+          <tr><th>Instance</th><td>{{ result.group_instance or "default" }}</td></tr>
+          <tr><th>Owner</th><td>{{ result.group_owner or "—" }}</td></tr>
+          <tr><th>List</th><td>{{ result.group_list or "—" }}</td></tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Billing (Phase 2 placeholder)</h2>
+        <div class="muted">No billing fields yet. They will appear here in Phase 2.</div>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

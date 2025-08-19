@@ -6,6 +6,9 @@ from icu import Collator, Locale
 collator = Collator.createInstance(Locale("pt_BR"))
 import pytz
 from datetime import datetime
+import hashlib, secrets
+from typing import Optional
+
 
 # Parse JSON string from env
 firebase_creds = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
@@ -306,3 +309,36 @@ def accept_admin_transfer(user_phone):
     db.collection("users").document(user_phone).update({"pending_admin_transfer": firestore.DELETE_FIELD})
 
     return {"from": from_phone}
+
+# --- System Admin (platform) helpers ---
+
+def _hash_password(password: str, salt: str) -> str:
+    return hashlib.sha256((salt + ":" + password).encode("utf-8")).hexdigest()
+
+def admin_get(username: str) -> Optional[dict]:
+    """admins/{username} doc with fields: active:bool, salt:str, password_hash:str"""
+    ref = db.collection("admins").document(username)
+    doc = ref.get()
+    return doc.to_dict() if doc.exists else None
+
+def admin_verify_password(username: str, password: str) -> bool:
+    data = admin_get(username)
+    if not data or data.get("active") is not True:
+        return False
+    salt = data.get("salt") or ""
+    stored = data.get("password_hash") or ""
+    if not salt or not stored:
+        return False
+    computed = _hash_password(password, salt)
+    return secrets.compare_digest(computed, stored)
+
+def admin_set_password(username: str, password: str, active: bool = True) -> None:
+    """Create/update a system admin. Run manually to seed admins."""
+    salt = secrets.token_hex(16)
+    pwd_hash = _hash_password(password, salt)
+    db.collection("admins").document(username).set({
+        "active": active,
+        "salt": salt,
+        "password_hash": pwd_hash,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
