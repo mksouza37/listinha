@@ -881,11 +881,12 @@ async def whatsapp_webhook(request: Request):
 
             # 2) Ready-to-copy message
             full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
-            send_message(from_number, full_text)
+            #send_message(from_number, full_text)
 
             # 3) Short demo video
             demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
-            send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
+            send_video(from_number, demo_url, caption=full_text)
+            #send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
 
             return {"status": "ok"}
 
