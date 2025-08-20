@@ -372,3 +372,15 @@ def set_stripe_ids(phone: str, customer_id: str, sub_id: str | None = None) -> N
         patch["subscription_id"] = sub_id
     update_user_billing(phone, patch)
 
+def find_phone_by_customer_or_subscription(customer_id: str | None, subscription_id: str | None) -> str | None:
+    # Try customer first
+    if customer_id:
+        docs = db.collection("users").where("billing.stripe_customer_id", "==", customer_id).stream()
+        for d in docs:
+            return d.id  # document id is the phone
+    # Then subscription
+    if subscription_id:
+        docs = db.collection("users").where("billing.subscription_id", "==", subscription_id).stream()
+        for d in docs:
+            return d.id
+    return None

@@ -3,7 +3,8 @@ from firebase import (
     add_item, get_items, delete_item, clear_items,
     get_user_group, create_new_list, user_in_list,
     is_admin, add_user_to_list, propose_admin_transfer, accept_admin_transfer,
-    remove_user_from_list, remove_self_from_list, get_user_billing, update_user_billing
+    remove_user_from_list, remove_self_from_list, get_user_billing, update_user_billing,
+    find_phone_by_customer_or_subscription
 )
 from firebase_admin import firestore
 from fastapi.responses import HTMLResponse, Response, PlainTextResponse
@@ -941,23 +942,37 @@ async def whatsapp_webhook(request: Request):
 
             return {"status": "ok"}
 
-        # Payment link
-        if cmd in {"/pagar"}:
-            # ensure a fresh Checkout link
-            group = get_user_group(phone)
-            instance_id = group.get("instance", "default")
+        # Payment link (/pagar)
+        if cmd == "/pagar":
             try:
+                # Instance resolution works even if the user doc doesn't exist yet
+                group = get_user_group(phone) or {}
+                instance_id = group.get("instance", "default")
+
+                # Create a fresh Checkout Session (now returns customer_id and maybe subscription_id)
                 sess = create_checkout_session(phone, instance_id)
-                url = sess["url"]
-                update_user_billing(phone, {
+                url = sess.get("url")
+                cust_id = sess.get("customer_id")
+                sub_id = sess.get("subscription_id")
+
+                # Persist what we already know (keeps webhook mapping robust)
+                patch = {
                     "last_checkout_url": url,
                     "last_updated": int(time.time()),
-                })
+                }
+                if cust_id:
+                    patch["stripe_customer_id"] = cust_id
+                if sub_id:
+                    patch["subscription_id"] = sub_id
+                update_user_billing(phone, patch)
+
+                # Send the link to the user
                 from messages import CHECKOUT_LINK
                 send_message(from_number, CHECKOUT_LINK(url))
+
             except Exception as e:
-                send_message(from_number, "⚠️ Não foi possível gerar o link agora. Tente novamente em instantes.")
                 print("Stripe error on /pagar:", str(e))
+                send_message(from_number, "⚠️ Não foi possível gerar o link agora. Tente novamente em instantes.")
             return {"status": "ok"}
 
         # Status summary
@@ -977,14 +992,12 @@ async def whatsapp_webhook(request: Request):
         print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
 
-# main.py
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
     cfg = load_config()
     payload = await request.body()
     sig_header = request.headers.get("Stripe-Signature", "")
 
-    event = None
     try:
         import stripe
         event = stripe.Webhook.construct_event(
@@ -994,19 +1007,29 @@ async def stripe_webhook(request: Request):
         if not cfg.allow_unverified_webhooks:
             print("❌ Stripe webhook signature verification failed:", str(e))
             return PlainTextResponse("Invalid signature", status_code=400)
-        try:
-            event = await request.json()  # debug-only fallback
-            print("⚠️ Accepting unverified webhook due to ALLOW_UNVERIFIED_WEBHOOKS=true")
-        except Exception as e2:
-            print("❌ Stripe webhook parse error:", str(e2))
-            return PlainTextResponse("Bad payload", status_code=400)
+        event = await request.json()
+        print("⚠️ Accepting unverified webhook due to ALLOW_UNVERIFIED_WEBHOOKS=true")
 
-    # Transform to our patch format
     ev = event if isinstance(event, dict) else event.to_dict()
     patch = handle_webhook_core(ev)
-    phone = patch.pop("_phone", None)
 
-    # Idempotency: ignore duplicate events we already processed
+    # Try to resolve phone if not present
+    phone = patch.pop("_phone", None)
+    if not phone:
+        obj = (ev.get("data") or {}).get("object") or {}
+        # Event-specific fields:
+        # - customer.subscription.* → obj["id"] == subscription_id, obj["customer"] == customer_id
+        # - invoice.*               → obj["subscription"], obj["customer"]
+        # - checkout.session.*      → obj["subscription"], obj["customer"]
+        customer_id = obj.get("customer")
+        subscription_id = obj.get("id") if ev.get("type","").startswith("customer.subscription.") else obj.get("subscription")
+        phone = find_phone_by_customer_or_subscription(customer_id, subscription_id)
+
+        # If we found the user by customer id but the billing doc doesn't store it yet, persist it
+        if phone and customer_id:
+            update_user_billing(phone, {"stripe_customer_id": customer_id})
+
+    # Idempotency (unchanged)
     if cfg.webhook_idempotency and phone:
         b = get_user_billing(phone) or {}
         last = (b or {}).get("last_event_id")
@@ -1020,7 +1043,7 @@ async def stripe_webhook(request: Request):
     if phone:
         update_user_billing(phone, patch)
     else:
-        print("ℹ️ Webhook without phone metadata; patch applied nowhere:", patch)
+        print("ℹ️ Webhook still missing user mapping; patch not applied:", patch)
 
     return {"received": True}
 

@@ -129,6 +129,8 @@ def ensure_customer(phone: str) -> str:
     )
     return cust["id"]
 
+# billing.py (replace the function body where we build params)
+
 def create_checkout_session(
     phone: str,
     instance_id: str,
@@ -136,16 +138,17 @@ def create_checkout_session(
     trial_days: Optional[int] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    Create a Checkout Session and return {'url': ..., 'id': ...}.
-    Caller persists 'last_checkout_url' and any IDs in Firestore.
-    """
     _require_stripe()
     cfg = load_config()
     stripe.api_key = cfg.secret_key
     price = price_id or cfg.price_id
 
-    customer_id = ensure_customer(phone)
+    customer_id = ensure_customer(phone)  # we already create customer with metadata={"phone": phone}
+
+    # Build subscription_data and ensure it carries our phone/instance metadata
+    subscription_data: Dict[str, Any] = {"metadata": {"phone": phone, "instance": instance_id}}
+    if trial_days and trial_days > 0:
+        subscription_data["trial_period_days"] = int(trial_days)
 
     params: Dict[str, Any] = {
         "mode": "subscription",
@@ -153,13 +156,18 @@ def create_checkout_session(
         "line_items": [{"price": price, "quantity": 1}],
         "success_url": f"{cfg.domain_url}/billing/success?phone={phone}",
         "cancel_url": f"{cfg.domain_url}/billing/cancel?phone={phone}",
-        "metadata": {"phone": phone, "instance": instance_id, **(metadata or {})},
+        "metadata": {"phone": phone, "instance": instance_id, **(metadata or {})},  # session metadata
+        "subscription_data": subscription_data,  # <<< the important bit
     }
-    if trial_days and trial_days > 0:
-        params["subscription_data"] = {"trial_period_days": int(trial_days)}
 
     session = stripe.checkout.Session.create(**params)
-    return {"url": session["url"], "id": session["id"]}
+    # In some event types, Stripe includes 'subscription' here too; return what we have.
+    return {
+        "url": session["url"],
+        "id": session["id"],
+        "customer_id": customer_id,
+        "subscription_id": session.get("subscription"),
+    }
 
 # ----------------------------
 # Gating helper (read-only)
