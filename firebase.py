@@ -349,3 +349,26 @@ def admin_set_password(username: str, password: str, active: bool = True) -> Non
         },
         merge=True,
     )
+
+# --- Billing accessors (all Firestore writes live here) ---
+
+def get_user_billing(phone: str) -> dict | None:
+    doc = db.collection("users").document(phone).get()
+    if not doc.exists:
+        return None
+    return (doc.to_dict() or {}).get("billing")
+
+def set_user_billing(phone: str, data: dict) -> None:
+    db.collection("users").document(phone).set({"billing": data}, merge=True)
+
+def update_user_billing(phone: str, patch: dict) -> None:
+    # Avoid leaking helper fields
+    patch = {k: v for k, v in patch.items() if not k.startswith("_")}
+    db.collection("users").document(phone).set({"billing": patch}, merge=True)
+
+def set_stripe_ids(phone: str, customer_id: str, sub_id: str | None = None) -> None:
+    patch = {"stripe_customer_id": customer_id}
+    if sub_id:
+        patch["subscription_id"] = sub_id
+    update_user_billing(phone, patch)
+

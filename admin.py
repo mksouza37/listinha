@@ -83,9 +83,3 @@ def admin_lookup(
     }
     return tpl.render(query=e164, error="", result=derived, who=who)
 
-@router.get("/admin/seed")
-def seed_admin():
-    from firebase import admin_set_password
-    admin_set_password("Markus", "Ultimas1@")
-    return {"ok": True}
-

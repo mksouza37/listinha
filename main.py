@@ -3,7 +3,7 @@ from firebase import (
     add_item, get_items, delete_item, clear_items,
     get_user_group, create_new_list, user_in_list,
     is_admin, add_user_to_list, propose_admin_transfer, accept_admin_transfer,
-    remove_user_from_list, remove_self_from_list
+    remove_user_from_list, remove_self_from_list, get_user_billing, update_user_billing
 )
 from firebase_admin import firestore
 from fastapi.responses import HTMLResponse, Response, PlainTextResponse
@@ -36,8 +36,12 @@ from messages import (
     z_step1_instructions, NEED_REFRESH_VIEW, item_index_invalid,
     LIST_CLEARED, WELCOME_MESSAGE, TRANSFER_ACCEPTED, TRANSFER_PREVIOUS_OWNER,
     LEFT_LIST, HELP_TEXT, MENU_TEXT, list_members, br_local_number,
+    PAYMENT_REQUIRED, HOW_TO_PAY, CHECKOUT_LINK, STATUS_SUMMARY
 )
 from admin import router as admin_router
+from billing import (
+    load_config, create_checkout_session, require_active_or_trial, handle_webhook_core
+)
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -62,6 +66,8 @@ META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
 # Token de verificação para o GET do webhook (Meta)
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "listinha-verify")
 
+# Commands that require active/trial/grace
+GATED_COMMANDS = {"/i", "/a", "/u", "/e", "/r", "/l", "/d"}
 
 @app.get("/")
 def root():
@@ -102,6 +108,19 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
             return None
 
     return None  # Fallback for any failure
+
+def _gate_if_needed(cmd: str, phone: str) -> bool:
+    """Returns True if processing should STOP (i.e., not allowed)."""
+    if cmd not in GATED_COMMANDS:
+        return False  # open command
+    ok, state, until_ts = require_active_or_trial(phone)
+    if ok:
+        return False
+    # Not ok -> tell how to pay and stop
+    from messages import PAYMENT_REQUIRED, HOW_TO_PAY
+    send_message(f"whatsapp:{phone}", f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}")
+    return True
+
 
 # ---------- Helpers to send updated views ----------
 
@@ -550,6 +569,24 @@ async def whatsapp_webhook(request: Request):
             if user_in_list(phone):
                 send_message(from_number, ALREADY_IN_LIST)
             else:
+
+                cfg = load_config()
+                if cfg.paywall_on_listinha:
+                    ok, state, _ = require_active_or_trial(phone)
+                    if not ok:
+                        # Send a fresh checkout link
+                        group = get_user_group(phone)
+                        instance_id = group.get("instance", "default") if group else "default"
+                        try:
+                            sess = create_checkout_session(phone, instance_id)
+                            url = sess["url"]
+                            update_user_billing(phone, {"last_checkout_url": url, "last_updated": int(time.time())})
+                            send_message(from_number, f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}\n\n{CHECKOUT_LINK(url)}")
+                        except Exception as e:
+                            print("Stripe error on listinha paywall:", str(e))
+                            send_message(from_number, f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}")
+                        return {"status": "ok"}
+
                 create_new_list(phone, instance_id, name)
                 send_message(from_number, list_created(f"*{name}*"))
                 # Optional: immediately show empty (or default) list
@@ -563,6 +600,8 @@ async def whatsapp_webhook(request: Request):
 
         # Add item to list (i <text>)
         if cmd == "/i" and arg:
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             added = add_item(phone, arg)
             if added:
                 send_message(from_number, item_added_log(arg))
@@ -575,6 +614,8 @@ async def whatsapp_webhook(request: Request):
 
         # Delete item: a <número | texto>
         if cmd == "/a" and arg:
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             wanted = arg.strip()
 
             # If it's a number, resolve via last snapshot (no race with live reordering)
@@ -626,6 +667,8 @@ async def whatsapp_webhook(request: Request):
         # Add new user (u <phone> [name])
         if cmd == "/u":
             # Requer telefone + nome
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             if not arg:
                 send_message(from_number, ADD_USER_USAGE)
                 return {"status": "ok"}
@@ -670,6 +713,8 @@ async def whatsapp_webhook(request: Request):
 
         # Remove user (admin): e <phone>
         if cmd == "/e" and arg:
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             target_phone = normalize_phone(arg, phone)
             if not target_phone:
                 send_message(from_number, INVALID_NUMBER)
@@ -836,6 +881,8 @@ async def whatsapp_webhook(request: Request):
 
         # Download PDF: d
         if cmd == "/d":
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             group = get_user_group(phone)
             raw_doc_id = f"{group.get('instance', 'default')}__{group['owner']}__{group['list']}"
             doc_id = quote(raw_doc_id, safe="")
@@ -867,6 +914,8 @@ async def whatsapp_webhook(request: Request):
 
         # Clear all items: l (admin only)
         if cmd == "/l":
+            if _gate_if_needed(cmd, phone):
+                return {"status": "ok"}
             if not is_admin(phone):
                 send_message(from_number, NOT_OWNER_CANNOT_CLEAR)
                 return {"status": "ok"}
@@ -892,6 +941,34 @@ async def whatsapp_webhook(request: Request):
 
             return {"status": "ok"}
 
+        # Payment link
+        if cmd in {"/pagar"}:
+            # ensure a fresh Checkout link
+            group = get_user_group(phone)
+            instance_id = group.get("instance", "default")
+            try:
+                sess = create_checkout_session(phone, instance_id)
+                url = sess["url"]
+                update_user_billing(phone, {
+                    "last_checkout_url": url,
+                    "last_updated": int(time.time()),
+                })
+                from messages import CHECKOUT_LINK
+                send_message(from_number, CHECKOUT_LINK(url))
+            except Exception as e:
+                send_message(from_number, "⚠️ Não foi possível gerar o link agora. Tente novamente em instantes.")
+                print("Stripe error on /pagar:", str(e))
+            return {"status": "ok"}
+
+        # Status summary
+        if cmd == "/status":
+            b = get_user_billing(phone) or {}
+            from billing import compute_status
+            state, until_ts = compute_status(b)
+            from messages import STATUS_SUMMARY
+            send_message(from_number, STATUS_SUMMARY(state, until_ts))
+            return {"status": "ok"}
+
         # ✅ Fallback for unknown commands
         send_message(from_number, UNKNOWN_COMMAND)
         return {"status": "ok"}
@@ -899,3 +976,63 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print("❌ Erro processando webhook da Meta:", str(e))
         return {"status": "ok"}
+
+# main.py
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    cfg = load_config()
+    payload = await request.body()
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    event = None
+    try:
+        import stripe
+        event = stripe.Webhook.construct_event(
+            payload=payload, sig_header=sig_header, secret=cfg.webhook_secret
+        )
+    except Exception as e:
+        if not cfg.allow_unverified_webhooks:
+            print("❌ Stripe webhook signature verification failed:", str(e))
+            return PlainTextResponse("Invalid signature", status_code=400)
+        try:
+            event = await request.json()  # debug-only fallback
+            print("⚠️ Accepting unverified webhook due to ALLOW_UNVERIFIED_WEBHOOKS=true")
+        except Exception as e2:
+            print("❌ Stripe webhook parse error:", str(e2))
+            return PlainTextResponse("Bad payload", status_code=400)
+
+    # Transform to our patch format
+    ev = event if isinstance(event, dict) else event.to_dict()
+    patch = handle_webhook_core(ev)
+    phone = patch.pop("_phone", None)
+
+    # Idempotency: ignore duplicate events we already processed
+    if cfg.webhook_idempotency and phone:
+        b = get_user_billing(phone) or {}
+        last = (b or {}).get("last_event_id")
+        current_id = ev.get("id")
+        if current_id and last == current_id:
+            print(f"↩️ Duplicate webhook ignored: {current_id}")
+            return {"received": True}
+        if current_id:
+            patch["last_event_id"] = current_id
+
+    if phone:
+        update_user_billing(phone, patch)
+    else:
+        print("ℹ️ Webhook without phone metadata; patch applied nowhere:", patch)
+
+    return {"received": True}
+
+# Rotas billing
+
+@app.get("/billing/success")
+def billing_success(phone: str):
+    send_message(f"whatsapp:{phone}", "✅ Pagamento confirmado! Obrigado.")
+    return PlainTextResponse("success")
+
+@app.get("/billing/cancel")
+def billing_cancel(phone: str):
+    send_message(f"whatsapp:{phone}", "ℹ️ Pagamento cancelado. Se preferir, você pode tentar novamente enviando *pagar*.")
+    return PlainTextResponse("cancel")
+

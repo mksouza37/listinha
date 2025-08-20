@@ -47,8 +47,27 @@ TRANSFER_RECEIVED = (
 NOT_OWNER_CANNOT_RENAME = "❌ Só o Dono da Listinha pode mudar o título."
 NOT_OWNER_CANNOT_CLEAR = "❌ Só o Dono da Listinha pode limpar todos os itens."
 
+# messages.py (near other static messages)
+PAYMENT_REQUIRED = (
+    "💳 Para usar a *Listinha*, é necessário ativar sua assinatura."
+)
+HOW_TO_PAY = "Envie *pagar* para receber o link ou use o link abaixo."
+def CHECKOUT_LINK(url: str) -> str:
+    return f"🔗 Ative aqui sua assinatura:\n{url}"
 
 # Dynamic messages
+
+# --- Billing messages (pt-BR) ---
+def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
+    from datetime import datetime
+    import pytz
+    if until_ts:
+        dt = datetime.fromtimestamp(int(until_ts), pytz.timezone('America/Sao_Paulo'))
+        until = dt.strftime('%d/%m/%Y %H:%M')
+        return f"📦 Status da assinatura: *{state}*\nVálida até: {until}"
+    return f"📦 Status da assinatura: *{state}*"
+
+# --- Other messages (pt-BR) ---
 
 def REMOVED_FROM_LIST(admin_display_name: str) -> str:
     return (
