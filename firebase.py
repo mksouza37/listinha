@@ -357,6 +357,8 @@ def get_user_billing(phone: str):
     doc = user_ref.get()
     if not doc.exists:
         return None
+    data = doc.to_dict() or {}
+    return data.get("billing") or None
 
 def set_user_billing(phone: str, data: dict) -> None:
     db.collection("users").document(phone).set({"billing": data}, merge=True)
