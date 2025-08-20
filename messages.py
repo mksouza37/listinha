@@ -1,4 +1,4 @@
-# messages.py
+from datetime import datetime, timezone
 
 # General static messages
 ALREADY_IN_LIST = (
@@ -66,6 +66,26 @@ def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
         until = dt.strftime('%d/%m/%Y %H:%M')
         return f"📦 Status da assinatura: *{state}*\nVálida até: {until}"
     return f"📦 Status da assinatura: *{state}*"
+
+try:
+    from zoneinfo import ZoneInfo
+    _TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    _TZ = timezone.utc
+
+def _fmt_date(ts: int) -> str:
+    try:
+        dt = datetime.fromtimestamp(int(ts), tz=timezone.utc).astimezone(_TZ)
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return str(ts)
+
+CANCELLED_NOW = "❌ Sua assinatura foi cancelada e não será mais cobrada."
+def CANCEL_SCHEDULED(until_ts: int | None) -> str:
+    if until_ts:
+        return f"⏳ Sua assinatura será cancelada em { _fmt_date(until_ts) }."
+    return "⏳ Sua assinatura foi marcada para cancelamento ao final do período atual."
+
 
 # --- Other messages (pt-BR) ---
 

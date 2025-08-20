@@ -1107,6 +1107,23 @@ async def stripe_webhook(request: Request):
         if current_id:
             patch["last_event_id"] = current_id
 
+    # --- Prepare optional notifications (cancel now / cancel scheduled) ---
+    notify_text = None
+    try:
+        # Lazy import so webhook won't break if messages.py changes
+        from messages import CANCELLED_NOW, CANCEL_SCHEDULED
+        # "Cancel now"
+        if typ == "customer.subscription.deleted" or patch.get("stripe_status") == "CANCELED":
+            notify_text = CANCELLED_NOW
+        # "Cancel at period end"
+        elif typ in ("customer.subscription.updated",) and patch.get("cancel_at_period_end"):
+            # prefer cancel_at, fallback to current_period_end
+            until_ts = patch.get("cancel_at") or patch.get("current_period_end")
+            notify_text = CANCEL_SCHEDULED(until_ts)
+    except Exception as e:
+        print("Notify prepare error:", str(e))
+    # ----------------------------------------------------------------------
+
     # 6) Final write
     if phone:
         # Also store subscription/customer ids if we have them now
@@ -1117,6 +1134,13 @@ async def stripe_webhook(request: Request):
 
         print("💾 Writing billing patch for", phone, "→", patch)
         update_user_billing(phone, patch)
+
+        # Send cancel-related WhatsApp message (if any)
+        if notify_text:
+            try:
+                send_message(f"whatsapp:{phone}", notify_text)
+            except Exception as e:
+                print("Notify send error:", str(e))
     else:
         print("ℹ️ Webhook missing user mapping; patch not applied:", {"type": typ, **patch})
 

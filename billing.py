@@ -71,25 +71,20 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     cancel_at = _safe_int(b.get("cancel_at"))
     cancel_at_period_end = bool(b.get("cancel_at_period_end"))
     stripe_status = (b.get("stripe_status") or "").upper()
-    canceled_flag = b.get("canceled") is True
-    canceled_at = _safe_int(b.get("canceled_at"))
 
-    # Hard cancellation takes priority
-    if canceled_flag or stripe_status == "CANCELED" or (canceled_at and canceled_at <= ts_now):
+    # hard cancel only when Stripe says so
+    if stripe_status == "CANCELED":
         return ("CANCELED", None)
 
     if trial_end and ts_now <= trial_end:
         return ("TRIAL", trial_end)
 
-    # If Stripe says ACTIVE/TRIALING: prefer current_period_end;
-    # if scheduled to cancel, use cancel_at/current_period_end as "until"
     if stripe_status in {"ACTIVE", "TRIALING"}:
         until = None
         if current_period_end and ts_now <= current_period_end:
             until = current_period_end
-        elif cancel_at and ts_now <= cancel_at:
+        elif cancel_at_period_end and cancel_at and ts_now <= cancel_at:
             until = cancel_at
-        # Fallback: treat as ACTIVE without date if Stripe says so
         return ("ACTIVE", until)
 
     if grace_until and ts_now <= grace_until:
@@ -192,41 +187,26 @@ def require_active_or_trial(phone: str) -> Tuple[bool, str, Optional[int]]:
 # Webhook core (pure transform)
 # ----------------------------
 def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Accepts a parsed Stripe event and returns a patch for users/{phone}.billing.
-    The route will write it via firebase.update_user_billing() and resolve the phone if needed.
-    This function is PURE (no I/O).
-    """
     typ = event.get("type", "")
     data = (event.get("data") or {}).get("object") or {}
 
     patch: Dict[str, Any] = {"last_updated": _now_ts()}
 
-    # Extract phone from metadata if available on the event object
     phone = None
     if isinstance(data.get("metadata"), dict):
         phone = data["metadata"].get("phone")
 
-    # ----------------------------
-    # checkout.session.completed
-    # ----------------------------
     if typ == "checkout.session.completed":
-        # Subscription will be created right after this event
         if phone:
             patch["last_checkout_session_id"] = data.get("id")
             patch["stripe_status"] = "CHECKOUT_COMPLETED"
-        # Capture subscription/customer if present on the session
         if data.get("subscription"):
             patch["subscription_id"] = data.get("subscription")
         if data.get("customer"):
             patch["stripe_customer_id"] = data.get("customer")
 
-    # ---------------------------------------------
-    # customer.subscription.created / .updated
-    # ---------------------------------------------
     elif typ in ("customer.subscription.created", "customer.subscription.updated"):
         sub = data
-
         status = str(sub.get("status", "")).upper()
         if status:
             patch["stripe_status"] = status
@@ -234,34 +214,32 @@ def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
         if sub.get("id"):
             patch["subscription_id"] = sub["id"]
 
-        # Period / trial
         if sub.get("current_period_end"):
             patch["current_period_end"] = _safe_int(sub.get("current_period_end"))
         if sub.get("trial_end"):
             patch["trial_end"] = _safe_int(sub.get("trial_end"))
 
-        # Cancellation intent / state
+        # cancellation/scheduling signals
         if "cancel_at_period_end" in sub:
             patch["cancel_at_period_end"] = bool(sub.get("cancel_at_period_end"))
         if sub.get("cancel_at"):
             patch["cancel_at"] = _safe_int(sub.get("cancel_at"))
         if sub.get("canceled_at"):
             patch["canceled_at"] = _safe_int(sub.get("canceled_at"))
-            patch["canceled"] = True
+
+        # only mark "canceled" when Stripe says the subscription is canceled
         if status == "CANCELED":
             patch["canceled"] = True
+        elif status in {"ACTIVE", "TRIALING"}:
+            # ensure we don't keep stale cancel flags when we become active again
+            patch["canceled"] = False
+            patch["cancel_at_period_end"] = False
 
-        # Try harder to find phone on the subscription metadata
         if not phone and isinstance(sub.get("metadata"), dict):
             phone = sub["metadata"].get("phone")
-
-        # Customer id also lives on subscription objects
         if sub.get("customer"):
             patch["stripe_customer_id"] = sub.get("customer")
 
-    # ----------------------------
-    # customer.subscription.deleted
-    # ----------------------------
     elif typ == "customer.subscription.deleted":
         patch["stripe_status"] = "CANCELED"
         patch["canceled"] = True
@@ -272,11 +250,7 @@ def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
         if data.get("customer"):
             patch["stripe_customer_id"] = data.get("customer")
 
-    # ----------------------------
-    # invoice.* events
-    # ----------------------------
-    elif typ == "invoice.paid":
-        # Mark ACTIVE; route will enrich with current_period_end by fetching the subscription if missing
+    elif typ in ("invoice.paid", "invoice.payment_succeeded"):
         patch["stripe_status"] = "ACTIVE"
         if data.get("subscription"):
             patch["subscription_id"] = data.get("subscription")
@@ -290,10 +264,8 @@ def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
         if data.get("customer"):
             patch["stripe_customer_id"] = data.get("customer")
 
-    # Attach phone back so the route can apply the patch to the right user
     if phone:
         patch["_phone"] = phone
-
     return patch
 
 # abre o stripe para o usuário consultar sua assinatura
