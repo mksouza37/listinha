@@ -981,6 +981,7 @@ async def whatsapp_webhook(request: Request):
             b = get_user_billing(phone) or {}
             state, until_ts = compute_status(b)
             send_message(from_number, STATUS_SUMMARY(state, until_ts))
+            print("DEBUG billing doc:", b)
             return {"status": "ok"}
 
         # ✅ Fallback for unknown commands
