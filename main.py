@@ -41,7 +41,8 @@ from messages import (
 )
 from admin import router as admin_router
 from billing import (
-    load_config, create_checkout_session, require_active_or_trial, handle_webhook_core
+    load_config, create_checkout_session, require_active_or_trial, handle_webhook_core,
+    compute_status,
 )
 
 app = FastAPI()
@@ -978,9 +979,7 @@ async def whatsapp_webhook(request: Request):
         # Status summary
         if cmd == "/status":
             b = get_user_billing(phone) or {}
-            from billing import compute_status
             state, until_ts = compute_status(b)
-            from messages import STATUS_SUMMARY
             send_message(from_number, STATUS_SUMMARY(state, until_ts))
             return {"status": "ok"}
 

@@ -352,11 +352,11 @@ def admin_set_password(username: str, password: str, active: bool = True) -> Non
 
 # --- Billing accessors (all Firestore writes live here) ---
 
-def get_user_billing(phone: str) -> dict | None:
-    doc = db.collection("users").document(phone).get()
+def get_user_billing(phone: str):
+    user_ref = db.collection("users").document(phone)
+    doc = user_ref.get()
     if not doc.exists:
         return None
-    return (doc.to_dict() or {}).get("billing")
 
 def set_user_billing(phone: str, data: dict) -> None:
     db.collection("users").document(phone).set({"billing": data}, merge=True)
