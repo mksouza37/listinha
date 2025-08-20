@@ -1019,6 +1019,7 @@ async def stripe_webhook(request: Request):
     ev = event if isinstance(event, dict) else event.to_dict()
     typ = ev.get("type", "")
     obj = (ev.get("data") or {}).get("object") or {}
+    print("▶️ Stripe event:", typ)
 
     # 2) Pure transform → initial patch
     patch = handle_webhook_core(ev)  # may include: stripe_status, subscription_id, current_period_end, trial_end, etc.
@@ -1036,9 +1037,15 @@ async def stripe_webhook(request: Request):
         or obj.get("subscription")
     )
 
+    print("🔎 IDs from event → customer:", customer_id, "subscription:", subscription_id, "phone_from_metadata:", phone)
+
     if not phone:
         # Try to map by customer_id or subscription_id
-        phone = find_phone_by_customer_or_subscription(customer_id, subscription_id)
+        try:
+            phone = find_phone_by_customer_or_subscription(customer_id, subscription_id)
+            print("🔁 Resolved phone by lookup:", phone)
+        except Exception as e:
+            print("⚠️ Lookup error (customer/sub -> phone):", str(e))
         # If we found the user by customer id but it wasn't stored yet, persist it eagerly
         if phone and customer_id:
             update_user_billing(phone, {"stripe_customer_id": customer_id})
@@ -1050,20 +1057,22 @@ async def stripe_webhook(request: Request):
             import stripe
             stripe.api_key = cfg.secret_key
             sub = stripe.Subscription.retrieve(subscription_id)
-            # Fill missing fields defensively
-            if sub:
-                # stripe-python returns dict-like objects; .get works
-                if sub.get("current_period_end"):
-                    patch["current_period_end"] = int(sub["current_period_end"])
-                if sub.get("status"):
-                    patch["stripe_status"] = str(sub["status"]).upper()
-                if sub.get("trial_end"):
-                    patch["trial_end"] = int(sub["trial_end"])
-                # Ensure subscription_id is present
-                patch.setdefault("subscription_id", sub.get("id"))
-                # Also persist customer id if available from subscription
-                if sub.get("customer") and not customer_id:
-                    customer_id = sub.get("customer")
+            sub_status = (sub.get("status") if hasattr(sub, "get") else getattr(sub, "status", None))
+            cpe = (sub.get("current_period_end") if hasattr(sub, "get") else getattr(sub, "current_period_end", None))
+            te = (sub.get("trial_end") if hasattr(sub, "get") else getattr(sub, "trial_end", None))
+            cust_from_sub = (sub.get("customer") if hasattr(sub, "get") else getattr(sub, "customer", None))
+            print("🧩 Enrich sub:", subscription_id, "status:", sub_status, "cpe:", cpe)
+
+            if cpe:
+                patch["current_period_end"] = int(cpe)
+            if sub_status:
+                patch["stripe_status"] = str(sub_status).upper()
+            if te:
+                patch["trial_end"] = int(te)
+            patch.setdefault("subscription_id", sub.get("id") if hasattr(sub, "get") else getattr(sub, "id", None))
+            if cust_from_sub and not customer_id:
+                customer_id = cust_from_sub
+            print("✅ Enriched current_period_end:", patch.get("current_period_end"))
         except Exception as e:
             print("⚠️ Could not enrich subscription from Stripe:", str(e))
 
@@ -1086,6 +1095,7 @@ async def stripe_webhook(request: Request):
         if subscription_id and "subscription_id" not in patch:
             patch["subscription_id"] = subscription_id
 
+        print("💾 Writing billing patch for", phone, "→", patch)
         update_user_billing(phone, patch)
     else:
         print("ℹ️ Webhook missing user mapping; patch not applied:", {"type": typ, **patch})

@@ -68,7 +68,6 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     if not b:
         return ("NONE", None)
 
-    # priority by time windows
     ts_now = _now_ts()
     trial_end = _safe_int(b.get("trial_end"))
     grace_until = _safe_int(b.get("grace_until"))
@@ -82,13 +81,17 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     if trial_end and ts_now <= trial_end:
         return ("TRIAL", trial_end)
 
-    if current_period_end and ts_now <= current_period_end and stripe_status in {"ACTIVE", "TRIALING"}:
-        return ("ACTIVE", current_period_end)
+    # If Stripe says ACTIVE/TRIALING but we don't have current_period_end yet,
+    # treat as ACTIVE (until_ts unknown) so the user isn't blocked.
+    if stripe_status in {"ACTIVE", "TRIALING"}:
+        if current_period_end and ts_now <= current_period_end:
+            return ("ACTIVE", current_period_end)
+        # Fallback: ACTIVE state without an until date
+        return ("ACTIVE", None)
 
     if grace_until and ts_now <= grace_until:
         return ("GRACE", grace_until)
 
-    # Stripe may say past_due/unpaid; keep a readable local state
     if stripe_status in {"PAST_DUE", "UNPAID"}:
         return ("PAST_DUE", current_period_end or grace_until)
 
