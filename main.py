@@ -42,7 +42,7 @@ from messages import (
 from admin import router as admin_router
 from billing import (
     load_config, create_checkout_session, require_active_or_trial, handle_webhook_core,
-    compute_status,
+    compute_status, create_billing_portal_session
 )
 
 app = FastAPI()
