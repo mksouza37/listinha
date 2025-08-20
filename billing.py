@@ -22,10 +22,6 @@ from firebase import (
 # Config
 # ----------------------------
 @dataclass(frozen=True)
-# billing.py (add to BillingConfig)
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
 class BillingConfig:
     secret_key: str
     publishable_key: str
