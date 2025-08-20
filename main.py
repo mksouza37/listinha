@@ -945,18 +945,40 @@ async def whatsapp_webhook(request: Request):
 
         # Payment link (/pagar)
         if cmd == "/pagar":
+            # Read current billing state
+            b = get_user_billing(phone) or {}
+            state, _ = compute_status(b)
+
+            # If already active/trial/grace, don't sell again
+            if state in {"ACTIVE", "TRIAL", "GRACE"}:
+                try:
+                    # Send Billing Portal so the user can manage the existing sub
+                    portal_url = create_billing_portal_session(
+                        phone,
+                        return_url=f"{load_config().domain_url}/billing/success?phone={phone}",
+                    )
+                    send_message(from_number,
+                                 "✅ Sua assinatura já está ativa.\n"
+                                 "Use o portal abaixo para alterar forma de pagamento, trocar plano ou cancelar:\n"
+                                 f"{portal_url}"
+                                 )
+                except Exception as e:
+                    print("Portal error on /pagar:", str(e))
+                    send_message(from_number,
+                                 "✅ Sua assinatura já está ativa.\n"
+                                 "Se precisar alterar o pagamento, responda aqui que te ajudamos."
+                                 )
+                return {"status": "ok"}
+
+            # Otherwise, proceed to create a new Checkout
             try:
-                # Instance resolution works even if the user doc doesn't exist yet
                 group = get_user_group(phone) or {}
                 instance_id = group.get("instance", "default")
-
-                # Create a fresh Checkout Session (now returns customer_id and maybe subscription_id)
                 sess = create_checkout_session(phone, instance_id)
                 url = sess.get("url")
                 cust_id = sess.get("customer_id")
                 sub_id = sess.get("subscription_id")
 
-                # Persist what we already know (keeps webhook mapping robust)
                 patch = {
                     "last_checkout_url": url,
                     "last_updated": int(time.time()),
@@ -967,10 +989,8 @@ async def whatsapp_webhook(request: Request):
                     patch["subscription_id"] = sub_id
                 update_user_billing(phone, patch)
 
-                # Send the link to the user
                 from messages import CHECKOUT_LINK
                 send_message(from_number, CHECKOUT_LINK(url))
-
             except Exception as e:
                 print("Stripe error on /pagar:", str(e))
                 send_message(from_number, "⚠️ Não foi possível gerar o link agora. Tente novamente em instantes.")

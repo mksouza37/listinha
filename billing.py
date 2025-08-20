@@ -237,3 +237,18 @@ def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
     if phone:
         patch["_phone"] = phone
     return patch
+
+# abre o stripe para o usuário consultar sua assinatura
+def create_billing_portal_session(phone: str, return_url: str) -> str:
+    _require_stripe()
+    cfg = load_config()
+    stripe.api_key = cfg.secret_key
+
+    # Find or create the customer (we prefer existing)
+    cid = ensure_customer(phone)
+    session = stripe.billing_portal.Session.create(
+        customer=cid,
+        return_url=return_url,  # e.g., f"{cfg.domain_url}/billing/return?phone={phone}"
+    )
+    return session["url"]
+
