@@ -998,6 +998,7 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get("Stripe-Signature", "")
 
+    # 1) Verify signature (or allow fallback if explicitly enabled)
     try:
         import stripe
         event = stripe.Webhook.construct_event(
@@ -1007,29 +1008,65 @@ async def stripe_webhook(request: Request):
         if not cfg.allow_unverified_webhooks:
             print("❌ Stripe webhook signature verification failed:", str(e))
             return PlainTextResponse("Invalid signature", status_code=400)
-        event = await request.json()
-        print("⚠️ Accepting unverified webhook due to ALLOW_UNVERIFIED_WEBHOOKS=true")
+        try:
+            event = await request.json()
+            print("⚠️ Accepting unverified webhook due to ALLOW_UNVERIFIED_WEBHOOKS=true")
+        except Exception as e2:
+            print("❌ Stripe webhook parse error:", str(e2))
+            return PlainTextResponse("Bad payload", status_code=400)
 
+    # Normalize event to dict
     ev = event if isinstance(event, dict) else event.to_dict()
-    patch = handle_webhook_core(ev)
+    typ = ev.get("type", "")
+    obj = (ev.get("data") or {}).get("object") or {}
 
-    # Try to resolve phone if not present
+    # 2) Pure transform → initial patch
+    patch = handle_webhook_core(ev)  # may include: stripe_status, subscription_id, current_period_end, trial_end, etc.
+
+    # 3) Find the phone (prefer metadata, else fallback by customer/subscription id)
     phone = patch.pop("_phone", None)
-    if not phone:
-        obj = (ev.get("data") or {}).get("object") or {}
-        # Event-specific fields:
-        # - customer.subscription.* → obj["id"] == subscription_id, obj["customer"] == customer_id
-        # - invoice.*               → obj["subscription"], obj["customer"]
-        # - checkout.session.*      → obj["subscription"], obj["customer"]
-        customer_id = obj.get("customer")
-        subscription_id = obj.get("id") if ev.get("type","").startswith("customer.subscription.") else obj.get("subscription")
-        phone = find_phone_by_customer_or_subscription(customer_id, subscription_id)
 
-        # If we found the user by customer id but the billing doc doesn't store it yet, persist it
+    # Extract ids present in this event
+    # - customer.subscription.* → obj["id"] is subscription_id, obj["customer"] is customer_id
+    # - invoice.* / checkout.session.* → obj["subscription"] and obj["customer"]
+    customer_id = obj.get("customer")
+    subscription_id = (
+        patch.get("subscription_id") or
+        (obj.get("id") if typ.startswith("customer.subscription.")) or
+        obj.get("subscription")
+    )
+
+    if not phone:
+        # Try to map by customer_id or subscription_id
+        phone = find_phone_by_customer_or_subscription(customer_id, subscription_id)
+        # If we found the user by customer id but it wasn't stored yet, persist it eagerly
         if phone and customer_id:
             update_user_billing(phone, {"stripe_customer_id": customer_id})
 
-    # Idempotency (unchanged)
+    # 4) Enrich missing subscription fields by fetching from Stripe
+    # Some events (e.g., invoice.paid, checkout.session.completed) may not carry current_period_end.
+    if subscription_id and phone and not patch.get("current_period_end"):
+        try:
+            import stripe
+            stripe.api_key = cfg.secret_key
+            sub = stripe.Subscription.retrieve(subscription_id)
+            # Fill missing fields defensively
+            if isinstance(sub, dict):
+                if sub.get("current_period_end"):
+                    patch["current_period_end"] = int(sub["current_period_end"])
+                if sub.get("status"):
+                    patch["stripe_status"] = str(sub["status"]).upper()
+                if sub.get("trial_end"):
+                    patch["trial_end"] = int(sub["trial_end"])
+                # Ensure subscription_id is present
+                patch.setdefault("subscription_id", sub.get("id"))
+                # Also persist customer id if available from subscription
+                if sub.get("customer") and not customer_id:
+                    customer_id = sub.get("customer")
+        except Exception as e:
+            print("⚠️ Could not enrich subscription from Stripe:", str(e))
+
+    # 5) Idempotency guard (by event id per-user)
     if cfg.webhook_idempotency and phone:
         b = get_user_billing(phone) or {}
         last = (b or {}).get("last_event_id")
@@ -1040,10 +1077,17 @@ async def stripe_webhook(request: Request):
         if current_id:
             patch["last_event_id"] = current_id
 
+    # 6) Final write
     if phone:
+        # Also store subscription/customer ids if we have them now
+        if customer_id and "stripe_customer_id" not in patch:
+            patch["stripe_customer_id"] = customer_id
+        if subscription_id and "subscription_id" not in patch:
+            patch["subscription_id"] = subscription_id
+
         update_user_billing(phone, patch)
     else:
-        print("ℹ️ Webhook still missing user mapping; patch not applied:", patch)
+        print("ℹ️ Webhook missing user mapping; patch not applied:", {"type": typ, **patch})
 
     return {"received": True}
 
