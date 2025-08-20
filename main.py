@@ -955,7 +955,7 @@ async def whatsapp_webhook(request: Request):
                     # Send Billing Portal so the user can manage the existing sub
                     portal_url = create_billing_portal_session(
                         phone,
-                        return_url=f"{load_config().domain_url}/billing/success?phone={phone}",
+                        return_url=f"{load_config().domain_url}/billing/return?phone={phone}",
                     )
                     send_message(from_number,
                                  "✅ Sua assinatura já está ativa.\n"
@@ -1133,4 +1133,15 @@ def billing_success(phone: str):
 def billing_cancel(phone: str):
     send_message(f"whatsapp:{phone}", "ℹ️ Pagamento cancelado. Se preferir, você pode tentar novamente enviando *pagar*.")
     return PlainTextResponse("cancel")
+
+@app.get("/billing/return")
+def billing_return(phone: str | None = None):
+    # Neutral message – this is for the Stripe *Portal* only, not checkout success
+    if phone:
+        try:
+            send_message(f"whatsapp:{phone}", "🔔 Voltamos do portal. Qualquer dúvida sobre sua assinatura, me chama aqui.")
+        except Exception as e:
+            print("Portal return notify error:", str(e))
+    return PlainTextResponse("OK")
+
 
