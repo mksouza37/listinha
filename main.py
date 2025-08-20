@@ -1042,7 +1042,7 @@ async def stripe_webhook(request: Request):
     print("▶️ Stripe event:", typ)
 
     # 2) Pure transform → initial patch
-    patch = handle_webhook_core(ev)  # may include: stripe_status, subscription_id, current_period_end, trial_end, etc.
+    patch = handle_webhook_core(ev)  # may include: status, subscription_id, current_period_end, etc.
 
     # 3) Find the phone (prefer metadata, else fallback by customer/subscription id)
     phone = patch.pop("_phone", None)
@@ -1071,7 +1071,8 @@ async def stripe_webhook(request: Request):
             update_user_billing(phone, {"stripe_customer_id": customer_id})
 
     # 4) Enrich missing subscription fields by fetching from Stripe
-    # Some events (e.g., invoice.paid, checkout.session.completed) may not carry current_period_end.
+    # Some events (e.g., invoice.paid / invoice.payment_succeeded, checkout.session.completed)
+    # may not carry current_period_end.
     if subscription_id and phone and not patch.get("current_period_end"):
         try:
             import stripe
@@ -1081,6 +1082,10 @@ async def stripe_webhook(request: Request):
             cpe = (sub.get("current_period_end") if hasattr(sub, "get") else getattr(sub, "current_period_end", None))
             te = (sub.get("trial_end") if hasattr(sub, "get") else getattr(sub, "trial_end", None))
             cust_from_sub = (sub.get("customer") if hasattr(sub, "get") else getattr(sub, "customer", None))
+            cancel_at = (sub.get("cancel_at") if hasattr(sub, "get") else getattr(sub, "cancel_at", None))
+            cancel_at_period_end = (sub.get("cancel_at_period_end") if hasattr(sub, "get") else getattr(sub, "cancel_at_period_end", None))
+            canceled_at = (sub.get("canceled_at") if hasattr(sub, "get") else getattr(sub, "canceled_at", None))
+
             print("🧩 Enrich sub:", subscription_id, "status:", sub_status, "cpe:", cpe)
 
             if cpe:
@@ -1089,6 +1094,16 @@ async def stripe_webhook(request: Request):
                 patch["stripe_status"] = str(sub_status).upper()
             if te:
                 patch["trial_end"] = int(te)
+            if cancel_at is not None:
+                patch["cancel_at"] = int(cancel_at)
+            if cancel_at_period_end is not None:
+                patch["cancel_at_period_end"] = bool(cancel_at_period_end)
+            if canceled_at is not None:
+                patch["canceled_at"] = int(canceled_at)
+                # If Stripe already considers it canceled now, set our flag
+                if not patch.get("cancel_at_period_end"):
+                    patch["canceled"] = True
+
             patch.setdefault("subscription_id", sub.get("id") if hasattr(sub, "get") else getattr(sub, "id", None))
             if cust_from_sub and not customer_id:
                 customer_id = cust_from_sub
@@ -1096,33 +1111,52 @@ async def stripe_webhook(request: Request):
         except Exception as e:
             print("⚠️ Could not enrich subscription from Stripe:", str(e))
 
-    # 5) Idempotency guard (by event id per-user)
-    if cfg.webhook_idempotency and phone:
-        b = get_user_billing(phone) or {}
-        last = (b or {}).get("last_event_id")
-        current_id = ev.get("id")
-        if current_id and last == current_id:
-            print(f"↩️ Duplicate webhook ignored: {current_id}")
-            return {"received": True}
-        if current_id:
-            patch["last_event_id"] = current_id
+    # 5) Idempotency guard (by event id per-user) and load previous billing for change detection
+    prev_billing = None
+    if phone:
+        prev_billing = get_user_billing(phone) or {}
+        if cfg.webhook_idempotency:
+            last = (prev_billing or {}).get("last_event_id")
+            current_id = ev.get("id")
+            if current_id and last == current_id:
+                print(f"↩️ Duplicate webhook ignored: {current_id}")
+                return {"received": True}
+            if current_id:
+                patch["last_event_id"] = current_id
 
-    # --- Prepare optional notifications (cancel now / cancel scheduled) ---
+    # --- Prepare notifications based on *state change* (to avoid spamming) ---
     notify_text = None
     try:
-        # Lazy import so webhook won't break if messages.py changes
-        from messages import CANCELLED_NOW, CANCEL_SCHEDULED
-        # "Cancel now"
-        if typ == "customer.subscription.deleted" or patch.get("stripe_status") == "CANCELED":
-            notify_text = CANCELLED_NOW
-        # "Cancel at period end"
-        elif typ in ("customer.subscription.updated",) and patch.get("cancel_at_period_end"):
-            # prefer cancel_at, fallback to current_period_end
-            until_ts = patch.get("cancel_at") or patch.get("current_period_end")
-            notify_text = CANCEL_SCHEDULED(until_ts)
+        from messages import CANCELLED_NOW, CANCEL_SCHEDULED  # CANCEL_SCHEDULED(until_ts: Optional[int]) -> str
+
+        if phone:
+            # Previous flags
+            prev_cancel_scheduled = bool(prev_billing.get("cancel_at_period_end"))
+            prev_canceled = bool(prev_billing.get("canceled"))
+            prev_status = (prev_billing.get("stripe_status") or "").upper()
+
+            # New flags (what this patch says, falling back to previous if patch is silent)
+            new_cancel_scheduled = bool(patch.get("cancel_at_period_end", prev_cancel_scheduled))
+            new_canceled = bool(patch.get("canceled", prev_canceled))
+            new_status = (patch.get("stripe_status") or prev_status or "").upper()
+
+            # Detect transitions
+            scheduled_now = (not prev_cancel_scheduled) and new_cancel_scheduled
+            canceled_now = (not prev_canceled) and (new_canceled and not new_cancel_scheduled or new_status == "CANCELED")
+
+            if canceled_now or typ == "customer.subscription.deleted":
+                notify_text = CANCELLED_NOW
+            elif scheduled_now:
+                until_ts = (
+                    patch.get("cancel_at")
+                    or patch.get("current_period_end")
+                    or prev_billing.get("cancel_at")
+                    or prev_billing.get("current_period_end")
+                )
+                notify_text = CANCEL_SCHEDULED(until_ts)
     except Exception as e:
         print("Notify prepare error:", str(e))
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------------
 
     # 6) Final write
     if phone:
@@ -1138,6 +1172,7 @@ async def stripe_webhook(request: Request):
         # Send cancel-related WhatsApp message (if any)
         if notify_text:
             try:
+                print("📣 Sending billing notification to", phone)
                 send_message(f"whatsapp:{phone}", notify_text)
             except Exception as e:
                 print("Notify send error:", str(e))

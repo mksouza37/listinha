@@ -70,26 +70,34 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     current_period_end = _safe_int(b.get("current_period_end"))
     cancel_at = _safe_int(b.get("cancel_at"))
     cancel_at_period_end = bool(b.get("cancel_at_period_end"))
+    canceled = bool(b.get("canceled"))
     stripe_status = (b.get("stripe_status") or "").upper()
 
-    # hard cancel only when Stripe says so
-    if stripe_status == "CANCELED":
+    # Hard cancel (immediate) — sometimes Stripe sets canceled=True a moment
+    # before the status flips to "canceled". Treat that as canceled now.
+    if stripe_status == "CANCELED" or (canceled and not cancel_at_period_end):
         return ("CANCELED", None)
 
+    # Trial window
     if trial_end and ts_now <= trial_end:
         return ("TRIAL", trial_end)
 
+    # Active / trialing — be tolerant if we don't yet have a period end.
     if stripe_status in {"ACTIVE", "TRIALING"}:
         until = None
         if current_period_end and ts_now <= current_period_end:
             until = current_period_end
         elif cancel_at_period_end and cancel_at and ts_now <= cancel_at:
+            # Scheduled to cancel at period end; show that as the "valid until"
             until = cancel_at
+        # Fallback: still consider ACTIVE even if we don't have an "until" yet
         return ("ACTIVE", until)
 
+    # Grace window (your local concept)
     if grace_until and ts_now <= grace_until:
         return ("GRACE", grace_until)
 
+    # Billing issues
     if stripe_status in {"PAST_DUE", "UNPAID"}:
         return ("PAST_DUE", current_period_end or grace_until)
 
