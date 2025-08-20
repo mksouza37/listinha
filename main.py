@@ -1031,9 +1031,9 @@ async def stripe_webhook(request: Request):
     # - invoice.* / checkout.session.* → obj["subscription"] and obj["customer"]
     customer_id = obj.get("customer")
     subscription_id = (
-        patch.get("subscription_id") or
-        (obj.get("id") if typ.startswith("customer.subscription.")) or
-        obj.get("subscription")
+        patch.get("subscription_id")
+        or (obj.get("id") if typ.startswith("customer.subscription.") else None)
+        or obj.get("subscription")
     )
 
     if not phone:
@@ -1051,7 +1051,8 @@ async def stripe_webhook(request: Request):
             stripe.api_key = cfg.secret_key
             sub = stripe.Subscription.retrieve(subscription_id)
             # Fill missing fields defensively
-            if isinstance(sub, dict):
+            if sub:
+                # stripe-python returns dict-like objects; .get works
                 if sub.get("current_period_end"):
                     patch["current_period_end"] = int(sub["current_period_end"])
                 if sub.get("status"):
