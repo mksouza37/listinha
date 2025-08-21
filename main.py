@@ -38,7 +38,7 @@ from messages import (
     LIST_CLEARED, WELCOME_MESSAGE, TRANSFER_ACCEPTED, TRANSFER_PREVIOUS_OWNER,
     LEFT_LIST, HELP_TEXT, MENU_TEXT, list_members, br_local_number,
     PAYMENT_REQUIRED, HOW_TO_PAY, CHECKOUT_LINK, STATUS_SUMMARY,
-    PORTAL_LINK, PORTAL_INACTIVE_CHECKOUT
+    PORTAL_LINK, PORTAL_INACTIVE_CHECKOUT, RESUMED_STATUS
 )
 from admin import router as admin_router
 from billing import (
@@ -1152,39 +1152,60 @@ async def stripe_webhook(request: Request):
             if current_id:
                 patch["last_event_id"] = current_id
 
-    # --- Prepare notifications based on *state change* (to avoid spamming) ---
+    # 5.1) Compute state transitions (before write) for notifications
+    # Use your status machine to classify states.
     notify_text = None
-    try:
-        from messages import CANCELLED_NOW, CANCEL_SCHEDULED  # CANCEL_SCHEDULED(until_ts: Optional[int]) -> str
+    if phone:
+        try:
+            from messages import CANCELLED_NOW, CANCEL_SCHEDULED, STATUS_SUMMARY  #
+            try:
+                # Optional helper (if you added it as suggested)
+                from messages import RESUMED_STATUS  # may not exist if not added yet
+                _has_resumed = True
+            except Exception:
+                _has_resumed = False
 
-        if phone:
-            # Previous flags
-            prev_cancel_scheduled = bool(prev_billing.get("cancel_at_period_end"))
-            prev_canceled = bool(prev_billing.get("canceled"))
-            prev_status = (prev_billing.get("stripe_status") or "").upper()
+            # Previous state & flags
+            old_state, _ = compute_status(prev_billing or {})  # ACTIVE/TRIAL/GRACE/PAST_DUE/EXPIRED/CANCELED
+            prev_cancel_scheduled = bool((prev_billing or {}).get("cancel_at_period_end"))
 
-            # New flags (what this patch says, falling back to previous if patch is silent)
-            new_cancel_scheduled = bool(patch.get("cancel_at_period_end", prev_cancel_scheduled))
-            new_canceled = bool(patch.get("canceled", prev_canceled))
-            new_status = (patch.get("stripe_status") or prev_status or "").upper()
+            # Prospective new state by merging patch (don't persist yet)
+            prospective = {**(prev_billing or {}), **(patch or {})}
+            new_state, new_until = compute_status(prospective)  #
+            new_cancel_scheduled = bool(prospective.get("cancel_at_period_end"))
 
-            # Detect transitions
-            scheduled_now = (not prev_cancel_scheduled) and new_cancel_scheduled
-            canceled_now = (not prev_canceled) and (new_canceled and not new_cancel_scheduled or new_status == "CANCELED")
+            # Transitions
+            canceled_now = (old_state != "CANCELED" and new_state == "CANCELED")
+            scheduled_now = (not prev_cancel_scheduled and new_cancel_scheduled)
+            resumed_now = (
+                new_state in {"ACTIVE", "TRIAL", "GRACE"} and
+                (
+                    old_state in {"EXPIRED", "PAST_DUE", "CANCELED"} or
+                    (prev_cancel_scheduled and not new_cancel_scheduled)
+                )
+            )
 
             if canceled_now or typ == "customer.subscription.deleted":
                 notify_text = CANCELLED_NOW
             elif scheduled_now:
-                until_ts = (
-                    patch.get("cancel_at")
-                    or patch.get("current_period_end")
-                    or prev_billing.get("cancel_at")
-                    or prev_billing.get("current_period_end")
-                )
+                # Prefer cancel_at; else fall back to current_period_end
+                until_ts = prospective.get("cancel_at") or prospective.get("current_period_end")
                 notify_text = CANCEL_SCHEDULED(until_ts)
-    except Exception as e:
-        print("Notify prepare error:", str(e))
-    # ------------------------------------------------------------------------
+            elif resumed_now:
+                if _has_resumed:
+                    # Nice UX message like "retomada" + summary
+                    from messages import RESUMED_STATUS  # re-import to satisfy linters if inside try
+                    notify_text = RESUMED_STATUS(new_state, new_until)  # uses STATUS_SUMMARY inside
+                else:
+                    # Fallback if RESUMED_STATUS is not defined yet
+                    notify_text = "✅ Sua assinatura foi retomada.\n" + STATUS_SUMMARY(new_state, new_until)
+
+            # Optional: notify on any other state change (commented to avoid noise)
+            # elif old_state != new_state:
+            #     notify_text = STATUS_SUMMARY(new_state, new_until)
+
+        except Exception as e:
+            print("Notify prepare error:", str(e))
 
     # 6) Final write
     if phone:
@@ -1197,11 +1218,11 @@ async def stripe_webhook(request: Request):
         print("💾 Writing billing patch for", phone, "→", patch)
         update_user_billing(phone, patch)
 
-        # Send cancel-related WhatsApp message (if any)
+        # 7) Send WhatsApp notification (if any)
         if notify_text:
             try:
                 print("📣 Sending billing notification to", phone)
-                send_message(f"whatsapp:{phone}", notify_text)
+                send_message(f"whatsapp:{phone}", notify_text)  #
             except Exception as e:
                 print("Notify send error:", str(e))
     else:

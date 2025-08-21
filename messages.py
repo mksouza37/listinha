@@ -100,6 +100,11 @@ def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
         f"{url}"
     )
 
+def RESUMED_STATUS(state: str, until_ts: int | None) -> str:
+    base = "✅ Sua assinatura foi retomada e está ativa.\n"
+    from .messages import STATUS_SUMMARY  # if this file is standalone, remove this import line
+    return base + STATUS_SUMMARY(state, until_ts)
+
 # --- Other messages (pt-BR) ---
 
 def REMOVED_FROM_LIST(admin_display_name: str) -> str:
