@@ -163,8 +163,9 @@ def create_checkout_session(
         "line_items": [{"price": price, "quantity": 1}],
         "success_url": f"{cfg.domain_url}/billing/success?phone={phone}",
         "cancel_url": f"{cfg.domain_url}/billing/cancel?phone={phone}",
-        "metadata": {"phone": phone, "instance": instance_id, **(metadata or {})},  # session metadata
-        "subscription_data": subscription_data,  # <<< the important bit
+        "metadata": {"phone": phone, "instance": instance_id, **(metadata or {})},
+        "subscription_data": subscription_data,
+        "locale": "pt-BR",  # 👈 added here
     }
 
     session = stripe.checkout.Session.create(**params)
@@ -283,8 +284,10 @@ def create_billing_portal_session(phone: str, return_url: str) -> str:
 
     params = {
         "customer": customer_id,
-        "return_url": return_url,  # pass f"{cfg.domain_url}/billing/return?phone={phone}"
+        "return_url": return_url,
+        "locale": "pt-BR",  # 👈 added here
     }
+
     session = stripe.billing_portal.Session.create(**params)
     return session["url"]
 
