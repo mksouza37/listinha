@@ -9,6 +9,7 @@ import phonenumbers
 from phonenumbers import NumberParseException
 from datetime import datetime
 import pytz
+from typing import Any, Dict, Optional
 
 # Firestore helpers
 from firebase import get_user_doc, admin_verify_password, update_user_billing
@@ -21,7 +22,7 @@ except Exception as _e:
                            "Please add it as shown earlier (ArrayUnion into users/{phone}.admin_audit).")
 
 # Billing helpers
-from billing import compute_status  # state machine (ACTIVE/TRIAL/...)
+from billing import compute_status, load_config  # state machine + Stripe config
 try:
     # extend current trial in Stripe by N days
     from billing import extend_trial_days
@@ -88,6 +89,72 @@ def _fmt_ts(ts: int | None) -> str:
         return datetime.fromtimestamp(int(ts), tz).strftime("%d/%m/%Y %H:%M")
     except Exception:
         return str(ts)
+
+
+def _enrich_from_stripe(phone: str) -> Optional[Dict[str, Any]]:
+    """
+    Best-effort: fetch current subscription from Stripe and return a billing patch.
+    Uses users/{phone}.billing.subscription_id when available; otherwise tries by customer.
+    """
+    try:
+        import stripe
+    except Exception:
+        # Stripe SDK not installed – nothing we can do
+        return None
+
+    cfg = load_config()
+    if not cfg.secret_key:
+        return None
+    stripe.api_key = cfg.secret_key
+
+    user = get_user_doc(phone) or {}
+    b = (user.get("billing") or {})
+    sub_id = b.get("subscription_id")
+    cust_id = b.get("stripe_customer_id")
+
+    sub = None
+    try:
+        if sub_id:
+            sub = stripe.Subscription.retrieve(sub_id)
+        elif cust_id:
+            # find the best candidate subscription for this customer
+            subs = stripe.Subscription.list(customer=cust_id, status="all", limit=10)
+            data = subs.get("data") if hasattr(subs, "get") else getattr(subs, "data", [])
+            data = list(data or [])
+
+            def _prio(s):
+                st = (s.get("status") if hasattr(s, "get") else getattr(s, "status", "")) or ""
+                rank = {"active": 0, "trialing": 1, "past_due": 2, "unpaid": 3, "incomplete": 4,
+                        "incomplete_expired": 5, "canceled": 6}.get(st, 9)
+                cpe = (s.get("current_period_end") if hasattr(s, "get") else getattr(s, "current_period_end", 0)) or 0
+                return (rank, -int(cpe))
+            data.sort(key=_prio)
+            sub = data[0] if data else None
+    except Exception as e:
+        print("⚠️ Stripe retrieve/list error:", str(e))
+        sub = None
+
+    if not sub:
+        return None
+
+    # Build patch from subscription object
+    def _g(obj, key):
+        return obj.get(key) if hasattr(obj, "get") else getattr(obj, key, None)
+
+    status = _g(sub, "status")
+    patch = {
+        "stripe_status": str(status or "").upper(),
+        "subscription_id": _g(sub, "id"),
+        "stripe_customer_id": _g(sub, "customer") or cust_id,
+        "current_period_end": int(_g(sub, "current_period_end") or 0) or None,
+        "trial_end": int(_g(sub, "trial_end") or 0) or None,
+        "cancel_at_period_end": bool(_g(sub, "cancel_at_period_end")),
+        "cancel_at": (int(_g(sub, "cancel_at") or 0) or None),
+        "canceled_at": (int(_g(sub, "canceled_at") or 0) or None),
+        "canceled": str(status or "").upper() == "CANCELED",
+        "last_updated": int(time.time()),
+    }
+    return patch
 
 
 def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
@@ -219,7 +286,18 @@ def admin_revoke_lifetime(
     if not e164:
         return RedirectResponse(url="/admin?err=invalid", status_code=302)
 
-    update_user_billing(e164, {"lifetime": False, "last_updated": int(time.time())})
+    # Turn off lifetime
+    patch: Dict[str, Any] = {"lifetime": False, "last_updated": int(time.time())}
+
+    # Try to re-enrich Stripe fields so Admin shows correct next renewal etc.
+    try:
+        enrich = _enrich_from_stripe(e164)
+        if enrich:
+            patch.update(enrich)
+    except Exception as e:
+        print("⚠️ Enrich after revoke_lifetime failed:", str(e))
+
+    update_user_billing(e164, patch)
 
     append_admin_audit(e164, {
         "ts": int(time.time()),
