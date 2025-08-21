@@ -58,14 +58,6 @@ def CHECKOUT_LINK(url: str) -> str:
 # Dynamic messages
 
 # --- Billing messages (pt-BR) ---
-def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
-    from datetime import datetime
-    import pytz
-    if until_ts:
-        dt = datetime.fromtimestamp(int(until_ts), pytz.timezone('America/Sao_Paulo'))
-        until = dt.strftime('%d/%m/%Y %H:%M')
-        return f"📦 Status da assinatura: *{state}*\nVálida até: {until}"
-    return f"📦 Status da assinatura: *{state}*"
 
 try:
     from zoneinfo import ZoneInfo
@@ -100,9 +92,18 @@ def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
         f"{url}"
     )
 
+def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
+    from datetime import datetime
+    import pytz
+    if until_ts:
+        dt = datetime.fromtimestamp(int(until_ts), pytz.timezone('America/Sao_Paulo'))
+        until = dt.strftime('%d/%m/%Y %H:%M')
+        return f"📦 Status da assinatura: *{state}*\nVálida até: {until}"
+    return f"📦 Status da assinatura: *{state}*"
+
 def RESUMED_STATUS(state: str, until_ts: int | None) -> str:
+    # No imports here; reuse STATUS_SUMMARY from this same module
     base = "✅ Sua assinatura foi retomada e está ativa.\n"
-    from .messages import STATUS_SUMMARY  # if this file is standalone, remove this import line
     return base + STATUS_SUMMARY(state, until_ts)
 
 # --- Other messages (pt-BR) ---

@@ -1153,54 +1153,42 @@ async def stripe_webhook(request: Request):
                 patch["last_event_id"] = current_id
 
     # 5.1) Compute state transitions (before write) for notifications
-    # Use your status machine to classify states.
     notify_text = None
     if phone:
         try:
-            from messages import CANCELLED_NOW, CANCEL_SCHEDULED, STATUS_SUMMARY  #
-            try:
-                # Optional helper (if you added it as suggested)
-                from messages import RESUMED_STATUS  # may not exist if not added yet
-                _has_resumed = True
-            except Exception:
-                _has_resumed = False
+            # Import all message helpers at once (no relative imports)
+            from messages import CANCELLED_NOW, CANCEL_SCHEDULED, STATUS_SUMMARY, \
+                RESUMED_STATUS  # existing + new helper
 
             # Previous state & flags
-            old_state, _ = compute_status(prev_billing or {})  # ACTIVE/TRIAL/GRACE/PAST_DUE/EXPIRED/CANCELED
+            old_state, _ = compute_status(prev_billing or {})
             prev_cancel_scheduled = bool((prev_billing or {}).get("cancel_at_period_end"))
 
             # Prospective new state by merging patch (don't persist yet)
             prospective = {**(prev_billing or {}), **(patch or {})}
-            new_state, new_until = compute_status(prospective)  #
+            new_state, new_until = compute_status(prospective)
             new_cancel_scheduled = bool(prospective.get("cancel_at_period_end"))
 
             # Transitions
-            canceled_now = (old_state != "CANCELED" and new_state == "CANCELED")
+            canceled_now = (old_state != "CANCELED" and new_state == "CANCELED") or (
+                        typ == "customer.subscription.deleted")
             scheduled_now = (not prev_cancel_scheduled and new_cancel_scheduled)
             resumed_now = (
-                new_state in {"ACTIVE", "TRIAL", "GRACE"} and
-                (
-                    old_state in {"EXPIRED", "PAST_DUE", "CANCELED"} or
-                    (prev_cancel_scheduled and not new_cancel_scheduled)
-                )
+                    new_state in {"ACTIVE", "TRIAL", "GRACE"} and
+                    (
+                            old_state in {"EXPIRED", "PAST_DUE", "CANCELED"} or
+                            (prev_cancel_scheduled and not new_cancel_scheduled)
+                    )
             )
 
-            if canceled_now or typ == "customer.subscription.deleted":
+            if canceled_now:
                 notify_text = CANCELLED_NOW
             elif scheduled_now:
-                # Prefer cancel_at; else fall back to current_period_end
                 until_ts = prospective.get("cancel_at") or prospective.get("current_period_end")
                 notify_text = CANCEL_SCHEDULED(until_ts)
             elif resumed_now:
-                if _has_resumed:
-                    # Nice UX message like "retomada" + summary
-                    from messages import RESUMED_STATUS  # re-import to satisfy linters if inside try
-                    notify_text = RESUMED_STATUS(new_state, new_until)  # uses STATUS_SUMMARY inside
-                else:
-                    # Fallback if RESUMED_STATUS is not defined yet
-                    notify_text = "✅ Sua assinatura foi retomada.\n" + STATUS_SUMMARY(new_state, new_until)
-
-            # Optional: notify on any other state change (commented to avoid noise)
+                notify_text = RESUMED_STATUS(new_state, new_until)
+            # Optional: notify on any other state change
             # elif old_state != new_state:
             #     notify_text = STATUS_SUMMARY(new_state, new_until)
 
