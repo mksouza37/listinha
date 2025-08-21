@@ -92,8 +92,8 @@
 
       <form method="post" action="/admin/extend_trial" style="display:flex; gap:8px; align-items:center; margin: 6px 0 12px;">
         <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
-        <label for="days"><b>Adicionar dias ao teste</b></label>
-        <input type="number" min="1" step="1" name="days" id="days" placeholder="Ex.: 30" style="width:120px;"/>
+        <label for="days"><b>Adicionar dias ao próximo vencimento</b></label>
+        <input type="number" min="1" step="1" name="days" id="days" placeholder="Ex.: 30" style="width:140px;"/>
         <button type="submit">Aplicar</button>
       </form>
 
@@ -101,10 +101,11 @@
         <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
         {% if result.lifetime %}
           <button type="submit" style="background:#8a1e1e;">Revogar Vitalício</button>
+          <span class="muted">Concessão vitalícia: <b>Concedido</b></span>
         {% else %}
           <button type="submit">Conceder Vitalício</button>
+          <span class="muted">Concessão vitalícia: <b>Não concedido</b></span>
         {% endif %}
-        <span class="muted">Estado atual: {{ 'Ativo' if result.lifetime else 'Inativo' }}</span>
       </form>
 
       <details style="margin-top:12px;">
