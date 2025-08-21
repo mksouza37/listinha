@@ -138,8 +138,6 @@ def ensure_customer(phone: str) -> str:
     )
     return cust["id"]
 
-# billing.py (replace the function body where we build params)
-
 def create_checkout_session(
     phone: str,
     instance_id: str,

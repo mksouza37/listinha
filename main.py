@@ -37,12 +37,13 @@ from messages import (
     z_step1_instructions, NEED_REFRESH_VIEW, item_index_invalid,
     LIST_CLEARED, WELCOME_MESSAGE, TRANSFER_ACCEPTED, TRANSFER_PREVIOUS_OWNER,
     LEFT_LIST, HELP_TEXT, MENU_TEXT, list_members, br_local_number,
-    PAYMENT_REQUIRED, HOW_TO_PAY, CHECKOUT_LINK, STATUS_SUMMARY
+    PAYMENT_REQUIRED, HOW_TO_PAY, CHECKOUT_LINK, STATUS_SUMMARY,
+    PORTAL_LINK, PORTAL_INACTIVE_CHECKOUT
 )
 from admin import router as admin_router
 from billing import (
     load_config, create_checkout_session, require_active_or_trial, handle_webhook_core,
-    compute_status, create_billing_portal_session
+    compute_status, create_billing_portal_session, ensure_customer,
 )
 
 app = FastAPI()
@@ -1002,6 +1003,31 @@ async def whatsapp_webhook(request: Request):
             state, until_ts = compute_status(b)
             send_message(from_number, STATUS_SUMMARY(state, until_ts))
             print("DEBUG billing doc:", b)
+            return {"status": "ok"}
+
+        # /c (gerenciar assinatura) — always allowed, never gated
+        if cmd in ("/c", "c", "/portal", "portal", "gerenciar", "/gerenciar"):
+            cfg = load_config()
+
+            # Read current status to decide portal vs checkout
+            b = get_user_billing(phone) or {}
+            state, _until_ts = compute_status(b)
+
+            try:
+                if state in {"ACTIVE", "TRIAL", "GRACE"}:
+                    # Create a Customer Portal session
+                    customer_id = ensure_customer(phone)
+                    return_url = f"{cfg.domain_url}/billing/return?phone={phone}"
+                    portal = create_billing_portal_session(customer_id, return_url)
+                    send_message(from_number, PORTAL_LINK(portal["url"]))
+                else:
+                    # Not active → send Checkout so the user can start a subscription
+                    checkout = create_checkout_session(phone=phone, instance_id=instance_id)
+                    send_message(from_number, PORTAL_INACTIVE_CHECKOUT(checkout["url"]))
+            except Exception as e:
+                print("Portal command error:", str(e))
+                # Fallback: be helpful but minimal
+                send_message(from_number, "⚠️ Não consegui abrir o portal agora. Tente novamente em alguns instantes.")
             return {"status": "ok"}
 
         # ✅ Fallback for unknown commands

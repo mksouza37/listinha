@@ -86,6 +86,19 @@ def CANCEL_SCHEDULED(until_ts: int | None) -> str:
         return f"⏳ Sua assinatura será cancelada em { _fmt_date(until_ts) }."
     return "⏳ Sua assinatura foi marcada para cancelamento ao final do período atual."
 
+def PORTAL_LINK(url: str) -> str:
+    return (
+        "🔐 *Portal da assinatura*\n"
+        f"{url}\n\n"
+        "No portal você pode alterar cartão, ver faturas, cancelar ou retomar."
+    )
+
+def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
+    return (
+        "ℹ️ Você ainda não tem uma assinatura ativa.\n"
+        "Para assinar, use este link de pagamento:\n"
+        f"{url}"
+    )
 
 # --- Other messages (pt-BR) ---
 
