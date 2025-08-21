@@ -4,27 +4,25 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.status import HTTP_401_UNAUTHORIZED
 from jinja2 import Template
-import os, secrets, time
+import os, secrets, time, calendar
 import phonenumbers
 from phonenumbers import NumberParseException
-from datetime import datetime
-import pytz
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 # Firestore helpers
 from firebase import get_user_doc, admin_verify_password, update_user_billing
-# Audit helper (must exist in firebase.py as suggested; otherwise we raise clearly)
+# Audit helper
 try:
-    from firebase import append_admin_audit  # def append_admin_audit(phone: str, entry: dict) -> None
+    from firebase import append_admin_audit
 except Exception as _e:
     def append_admin_audit(*_args, **_kwargs):
         raise RuntimeError("append_admin_audit() is not defined in firebase.py. "
                            "Please add it as shown earlier (ArrayUnion into users/{phone}.admin_audit).")
 
 # Billing helpers
-from billing import compute_status, load_config  # state machine + Stripe config
+from billing import compute_status, load_config
 try:
-    # extend current trial in Stripe by N days
     from billing import extend_trial_days
 except Exception as _e:
     def extend_trial_days(*_args, **_kwargs):
@@ -33,7 +31,7 @@ except Exception as _e:
 
 # Optional: pretty PT-BR labels for states
 try:
-    from messages import STATUS_NAMES_PT  # dict like {"ACTIVE": "Ativa", ..., "LIFETIME": "Vitalícia"}
+    from messages import STATUS_NAMES_PT
 except Exception:
     STATUS_NAMES_PT = {}
 
@@ -42,18 +40,12 @@ router = APIRouter()
 
 
 def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> str:
-    """
-    Auth check order:
-    1) Firestore admins/{username} with hashed password (multi-admin)
-    2) Optional fallback: single ADMIN_USER/ADMIN_PASSWORD from env (break-glass)
-    """
     username = credentials.username
     password = credentials.password or ""
 
     if admin_verify_password(username, password):
         return username
 
-    # Optional fallback (set env to empty to disable)
     env_user = os.getenv("ADMIN_USER", "")
     env_pwd  = os.getenv("ADMIN_PASSWORD", "")
     if env_user and env_pwd:
@@ -81,21 +73,49 @@ def _normalize_phone(raw: str, default_region: str = "BR") -> str | None:
 
 
 def _fmt_ts(ts: int | None) -> str:
-    """Format UNIX ts to America/Sao_Paulo dd/mm/yyyy HH:MM; return '-' if empty."""
     if not ts:
         return "-"
     try:
-        tz = pytz.timezone("America/Sao_Paulo")
+        tz = pytz.timezone("America/Sao_Paulo")  # type: ignore
         return datetime.fromtimestamp(int(ts), tz).strftime("%d/%m/%Y %H:%M")
     except Exception:
         return str(ts)
 
 
+# ---------- helpers to roll forward a past period end ----------
+def _month_add(dt: datetime, months: int) -> datetime:
+    y = dt.year + (dt.month - 1 + months) // 12
+    m = (dt.month - 1 + months) % 12 + 1
+    d = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=d)
+
+def _predict_future_cpe(cpe_ts: int, interval: str, interval_count: int) -> int:
+    dt = datetime.fromtimestamp(int(cpe_ts), timezone.utc)
+    now = datetime.now(timezone.utc)
+    if interval == "month":
+        step = interval_count
+        while dt <= now:
+            dt = _month_add(dt, step)
+    elif interval == "year":
+        step = 12 * interval_count
+        while dt <= now:
+            dt = _month_add(dt, step)
+    elif interval == "week":
+        step = 7 * interval_count
+        while dt <= now:
+            dt = dt + timedelta(days=step)
+    elif interval == "day":
+        step = interval_count
+        while dt <= now:
+            dt = dt + timedelta(days=step)
+    return int(dt.timestamp())
+
+
 def _enrich_from_stripe(phone: str) -> Optional[Dict[str, Any]]:
     """
-    Best-effort: fetch current subscription from Stripe and return a billing patch.
-    Uses users/{phone}.billing.subscription_id when available; otherwise tries by customer.
-    Also tries multiple fallbacks to recover current_period_end.
+    Fetch the subscription and build a billing patch.
+    If current_period_end is in the past but status is ACTIVE/TRIALING,
+    roll it forward based on the plan/price recurring interval.
     """
     try:
         import stripe
@@ -115,9 +135,9 @@ def _enrich_from_stripe(phone: str) -> Optional[Dict[str, Any]]:
     sub = None
     try:
         if sub_id:
-            sub = stripe.Subscription.retrieve(sub_id)
+            sub = stripe.Subscription.retrieve(sub_id, expand=["items.data.price", "latest_invoice"])
         elif cust_id:
-            subs = stripe.Subscription.list(customer=cust_id, status="all", limit=10)
+            subs = stripe.Subscription.list(customer=cust_id, status="all", limit=10, expand=["data.items.data.price", "data.latest_invoice"])
             items = subs.get("data") if hasattr(subs, "get") else getattr(subs, "data", [])
             items = list(items or [])
 
@@ -139,29 +159,37 @@ def _enrich_from_stripe(phone: str) -> Optional[Dict[str, Any]]:
     def _g(obj, key):
         return obj.get(key) if hasattr(obj, "get") else getattr(obj, key, None)
 
-    status = _g(sub, "status")
+    status = (_g(sub, "status") or "").upper()
     cpe = _g(sub, "current_period_end")
     te  = _g(sub, "trial_end")
 
-    # Fallback 1: upcoming invoice
-    if not cpe:
-        try:
-            inv = stripe.Invoice.upcoming(customer=_g(sub, "customer"), subscription=_g(sub, "id"))
-            cpe = (inv.get("period_end") if hasattr(inv, "get") else getattr(inv, "period_end", None)) or cpe
-        except Exception as e:
-            print("ℹ️ Upcoming invoice not available:", str(e))
+    # If cpe is missing or in the past, try to roll it forward by interval
+    try:
+        if (not cpe) or (int(cpe) <= int(datetime.now(timezone.utc).timestamp())):
+            # prefer Price.recurring, fallback to Plan
+            items = _g(_g(sub, "items") or {}, "data") or []
+            interval = None
+            interval_count = 1
+            if items:
+                price = _g(items[0], "price") or {}
+                recurring = _g(price, "recurring") or {}
+                interval = recurring.get("interval")
+                interval_count = int(recurring.get("interval_count") or 1)
+                if not interval:
+                    plan = _g(items[0], "plan") or {}
+                    interval = plan.get("interval")
+                    interval_count = int(plan.get("interval_count") or 1)
 
-    # Fallback 2: expand latest_invoice and use its period_end
-    if not cpe:
-        try:
-            sub2 = stripe.Subscription.retrieve(_g(sub, "id"), expand=["latest_invoice"])
-            li = _g(sub2, "latest_invoice")
-            cpe = (li.get("period_end") if hasattr(li, "get") else getattr(li, "period_end", None)) or cpe
-        except Exception as e:
-            print("ℹ️ Expand latest_invoice failed:", str(e))
+            if interval and cpe:
+                new_cpe = _predict_future_cpe(int(cpe), str(interval), int(interval_count))
+                if new_cpe and new_cpe != int(cpe):
+                    cpe = new_cpe
+                    print(f"🔁 Rolled CPE forward via interval={interval}*{interval_count} → {new_cpe}")
+    except Exception as e:
+        print("ℹ️ Could not roll forward CPE:", str(e))
 
     patch = {
-        "stripe_status": str(status or "").upper(),
+        "stripe_status": status,
         "subscription_id": _g(sub, "id"),
         "stripe_customer_id": _g(sub, "customer") or cust_id,
         "current_period_end": int(cpe) if cpe else None,
@@ -169,16 +197,15 @@ def _enrich_from_stripe(phone: str) -> Optional[Dict[str, Any]]:
         "cancel_at_period_end": bool(_g(sub, "cancel_at_period_end")),
         "cancel_at": (int(_g(sub, "cancel_at")) if _g(sub, "cancel_at") else None),
         "canceled_at": (int(_g(sub, "canceled_at")) if _g(sub, "canceled_at") else None),
-        "canceled": str(status or "").upper() == "CANCELED",
+        "canceled": status == "CANCELED",
         "last_updated": int(time.time()),
     }
 
-    print("🧩 Enrich result:", patch)  # helpful server-side log
+    print("🧩 Enrich result:", patch)
     return patch
 
 
 def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
-    """Shared renderer used by GET/POST lookup handlers."""
     with open("templates/admin.html", encoding="utf-8") as f:
         tpl = Template(f.read())
 
@@ -195,7 +222,6 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
     state, until_ts = compute_status(billing)
     state_pt = STATUS_NAMES_PT.get(state, state)
     audit = user.get("admin_audit", [])
-
     lifetime_flag = bool(billing.get("lifetime"))
 
     derived = {
@@ -208,8 +234,8 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
 
         # Billing block
         "billing_raw": billing,
-        "billing_state": state,                 # e.g., ACTIVE / LIFETIME / ...
-        "billing_state_pt": state_pt,           # e.g., Ativa / Vitalícia
+        "billing_state": state,
+        "billing_state_pt": state_pt,
         "billing_until_ts": until_ts,
         "billing_until_fmt": "Para sempre" if state == "LIFETIME" else _fmt_ts(until_ts),
 
@@ -220,7 +246,6 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
         "last_checkout_url": billing.get("last_checkout_url"),
         "cancel_at_period_end": bool(billing.get("cancel_at_period_end")),
         "canceled": bool(billing.get("canceled")),
-        # Hide cancel dates if lifetime, or if not actually scheduled/canceled
         "cancel_at_fmt": "-" if lifetime_flag or not bool(billing.get("cancel_at_period_end")) else _fmt_ts(billing.get("cancel_at")),
         "canceled_at_fmt": "-" if lifetime_flag or not bool(billing.get("canceled")) else _fmt_ts(billing.get("canceled_at")),
         "current_period_end_fmt": _fmt_ts(billing.get("current_period_end")),
@@ -228,11 +253,9 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
         "grace_until_fmt": _fmt_ts(billing.get("grace_until")),
         "lifetime": lifetime_flag,
 
-        # Admin audit history
         "admin_audit": audit,
     }
 
-    # url_error (if any) shows as a banner via the same 'error' slot
     return tpl.render(query=e164, error=url_error, result=derived, who=who)
 
 
@@ -258,13 +281,12 @@ def admin_lookup_get(
     who: str = Depends(require_admin),
 ):
     if not owner_phone:
-        # If someone hits the URL directly without a phone, go back to home
         return admin_home(who)
     return _render_lookup_page(owner_phone, who, url_error=err)
 
 
 # ----------------------------
-# Admin Actions (exactly two)
+# Admin Actions
 # ----------------------------
 
 @router.post("/admin/grant_lifetime")
@@ -276,7 +298,6 @@ def admin_grant_lifetime(
     if not e164:
         return RedirectResponse(url="/admin?err=invalid", status_code=302)
 
-    # Set lifetime flag ON and clear stale cancel info to avoid confusion
     update_user_billing(e164, {
         "lifetime": True,
         "cancel_at_period_end": False,
@@ -293,7 +314,6 @@ def admin_grant_lifetime(
         "details": {},
     })
 
-    # Redirect back to lookup
     return RedirectResponse(url=f"/admin/lookup?owner_phone={e164}", status_code=303)
 
 
@@ -306,10 +326,8 @@ def admin_revoke_lifetime(
     if not e164:
         return RedirectResponse(url="/admin?err=invalid", status_code=302)
 
-    # Turn off lifetime
     patch: Dict[str, Any] = {"lifetime": False, "last_updated": int(time.time())}
 
-    # Try to re-enrich Stripe fields so Admin shows correct next renewal etc.
     try:
         enrich = _enrich_from_stripe(e164)
         if enrich:
@@ -342,14 +360,12 @@ def admin_extend_trial(
     try:
         new_ts = extend_trial_days(e164, int(days))
     except Exception as e:
-        # Record failed attempt too
         append_admin_audit(e164, {
             "ts": int(time.time()),
             "admin": who,
             "action": "extend_trial_failed",
             "details": {"days": days, "error": str(e)},
         })
-        # Redirect back with a simple error message on URL
         return RedirectResponse(url=f"/admin/lookup?owner_phone={e164}&err={str(e)}", status_code=303)
 
     append_admin_audit(e164, {
