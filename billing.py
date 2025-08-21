@@ -61,6 +61,11 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     if not b:
         return ("NONE", None)
 
+    # --- NEW: isenção / lifetime bypasses Stripe entirely ---
+    if bool(b.get("exempt") or b.get("isencao") or b.get("lifetime")):
+        return ("EXEMPT", None)
+    # --------------------------------------------------------
+
     ts_now = _now_ts()
     trial_end = _safe_int(b.get("trial_end"))
     grace_until = _safe_int(b.get("grace_until"))
@@ -150,21 +155,9 @@ def create_checkout_session(
     }
 
 def require_active_or_trial(phone: str) -> Tuple[bool, str, Optional[int]]:
-    """
-    Return (ok, state, until_ts).
-
-    NEW: If the user has admin **Isenção** (billing.exempt = True),
-    we bypass the paywall entirely and return ("EXEMPT", None).
-    Stripe info remains untouched.
-    """
     b = get_user_billing(phone) or {}
-
-    # Back-compat: also honor an old "lifetime" flag if it still exists.
-    if bool(b.get("exempt")) or bool(b.get("isencao")) or bool(b.get("lifetime")):
-        return True, "EXEMPT", None
-
     state, until_ts = compute_status(b)
-    ok = state in {"ACTIVE", "TRIAL", "GRACE"}
+    ok = state in {"ACTIVE", "TRIAL", "GRACE", "EXEMPT"}   # ← include EXEMPT
     return ok, state, until_ts
 
 def handle_webhook_core(event: Dict[str, Any]) -> Dict[str, Any]:
