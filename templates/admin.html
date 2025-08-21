@@ -11,7 +11,8 @@
     h1 { font-size: 20px; margin: 0 0 16px; }
     h2 { font-size: 18px; margin-top: 28px; border-top: 1px solid #eee; padding-top: 16px; }
     form { display:flex; gap:8px; margin-bottom:16px; }
-    input[type=text] { flex:1; padding:10px 12px; border:1px solid #ddd; border-radius:10px; }
+    input[type=text], input[type=number] { padding:10px 12px; border:1px solid #ddd; border-radius:10px; }
+    input[type=text] { flex:1; }
     button { padding:10px 14px; border:0; border-radius:10px; background:#111; color:#fff; font-weight:600; cursor:pointer; }
     .muted { color:#666; font-size: 12px; }
     .row { display:grid; grid-template-columns: 240px 1fr; gap:8px; padding:8px 0; border-bottom:1px dashed #eee; }
@@ -54,7 +55,7 @@
       {% set s = result %}
       {% set stat = (s.billing_state_pt or s.billing_state or "-") %}
       {% set badge_cls = "badge" %}
-      {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" %}
+      {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" or s.billing_state == "LIFETIME" %}
         {% set badge_cls = "badge ok" %}
       {% elif s.billing_state == "PAST_DUE" %}
         {% set badge_cls = "badge warn" %}
@@ -86,10 +87,48 @@
         </div>
       </div>
 
+      <!-- Admin Actions -->
+      <h2>Ações de Assinatura (Admin)</h2>
+
+      <form method="post" action="/admin/extend_trial" style="display:flex; gap:8px; align-items:center; margin: 6px 0 12px;">
+        <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
+        <label for="days"><b>Adicionar dias ao teste</b></label>
+        <input type="number" min="1" step="1" name="days" id="days" placeholder="Ex.: 30" style="width:120px;"/>
+        <button type="submit">Aplicar</button>
+      </form>
+
+      <form method="post" action="{{ '/admin/revoke_lifetime' if result.lifetime else '/admin/grant_lifetime' }}" style="display:flex; gap:8px; align-items:center;">
+        <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
+        {% if result.lifetime %}
+          <button type="submit" style="background:#8a1e1e;">Revogar Vitalício</button>
+        {% else %}
+          <button type="submit">Conceder Vitalício</button>
+        {% endif %}
+        <span class="muted">Estado atual: {{ 'Ativo' if result.lifetime else 'Inativo' }}</span>
+      </form>
+
       <details style="margin-top:12px;">
         <summary class="muted">Ver JSON bruto de billing</summary>
         <div class="raw">{{ s.billing_raw | tojson(indent=2) }}</div>
       </details>
+
+      <!-- Admin Audit -->
+      <h2>Histórico (Admin Audit)</h2>
+      {% if result.admin_audit and result.admin_audit|length > 0 %}
+        <div class="row" style="font-weight:600;"><div>Quando (ts)</div><div>Ação / Detalhes</div></div>
+        {% for ev in result.admin_audit|sort(attribute='ts', reverse=True) %}
+          <div class="row">
+            <div>{{ ev.ts }}</div>
+            <div>
+              <b>{{ ev.action }}</b>
+              {% if ev.admin %}<span class="muted">por {{ ev.admin }}</span>{% endif %}
+              {% if ev.details %}<div class="muted">{{ ev.details | tojson(indent=0) }}</div>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="muted">Sem registros.</div>
+      {% endif %}
     {% endif %}
 
     <p class="muted" style="margin-top:20px;">Logado como: {{ who }}</p>

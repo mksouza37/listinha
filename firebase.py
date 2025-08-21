@@ -386,3 +386,15 @@ def find_phone_by_customer_or_subscription(customer_id: str | None, subscription
         for d in docs:
             return d.id
     return None
+
+def append_admin_audit(phone: str, entry: dict) -> None:
+    """
+    Append an admin action record to users/{phone}.admin_audit (array).
+    Each entry should be a small dict: {ts, admin, action, details}.
+    """
+    db = firestore.client()
+    ref = db.collection("users").document(phone)
+    # Make sure document exists
+    ref.set({}, merge=True)
+    ref.update({"admin_audit": firestore.ArrayUnion([entry])})
+

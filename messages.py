@@ -69,6 +69,7 @@ STATUS_NAMES_PT = {
     "EXPIRED": "Expirada",
     "CANCELED": "Cancelada",
     "CHECKOUT_COMPLETED": "Checkout concluído",
+    "LIFETIME": "Vitalícia",
 }
 
 try:

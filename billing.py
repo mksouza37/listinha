@@ -183,9 +183,13 @@ def create_checkout_session(
 def require_active_or_trial(phone: str) -> Tuple[bool, str, Optional[int]]:
     """
     Return (ok, state, until_ts).
-    Main will decide how to message the user (messages.py).
     """
     b = get_user_billing(phone) or {}
+
+    # NEW: lifetime users always pass
+    if bool(b.get("lifetime")):
+        return True, "LIFETIME", None
+
     state, until_ts = compute_status(b)
     ok = state in {"ACTIVE", "TRIAL", "GRACE"}
     return ok, state, until_ts
@@ -290,5 +294,52 @@ def create_billing_portal_session(phone: str, return_url: str) -> str:
 
     session = stripe.billing_portal.Session.create(**params)
     return session["url"]
+
+def extend_trial_days(phone: str, extra_days: int) -> int:
+    """
+    Extend the current trial by N days by updating the subscription's trial_end.
+    Requirements/limitations:
+      - Works when the subscription is TRIALING or ACTIVE *and* has a future trial_end.
+      - If there is no trial in progress (trial_end <= now or missing), raise an error.
+    Returns the new trial_end (unix ts).
+    """
+    if extra_days <= 0:
+        raise ValueError("extra_days must be > 0")
+
+    _require_stripe()
+    cfg = load_config()
+    stripe.api_key = cfg.secret_key
+
+    b = get_user_billing(phone) or {}
+    sub_id = b.get("subscription_id")
+    trial_end = _safe_int(b.get("trial_end"))
+    now_ts = _now_ts()
+
+    if not sub_id:
+        raise RuntimeError("User has no active subscription_id to extend trial on.")
+
+    if not trial_end or trial_end <= now_ts:
+        # We only implement 'extend' (not 'recreate a new trial').
+        raise RuntimeError("No active trial to extend (trial_end missing or already ended).")
+
+    # Compute new trial_end
+    new_trial_end = int(trial_end + extra_days * 86400)
+
+    # Update subscription at Stripe (no proration, just extend trial)
+    sub = stripe.Subscription.modify(
+        sub_id,
+        trial_end=new_trial_end,
+        proration_behavior="none",
+    )
+
+    # Persist locally (webhooks will eventually confirm too; we update eagerly for UX)
+    update_user_billing(phone, {
+        "trial_end": new_trial_end,
+        "stripe_status": str(getattr(sub, "status", "trialing")).upper(),
+        "last_updated": now_ts,
+    })
+
+    return new_trial_end
+
 
 
