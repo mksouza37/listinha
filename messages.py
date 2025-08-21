@@ -106,20 +106,21 @@ def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
     )
 
 def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
-    from datetime import datetime
-    import pytz
+    label = STATUS_NAMES_PT.get(state, state)
 
-    # Converte a sigla/estado técnico para PT-BR, mantendo fallback seguro
-    key = (state or "").upper()
-    state_pt = STATUS_NAMES_PT.get(key, state)
+    # Lifetime: say it explicitly and skip "válida até"
+    if state == "LIFETIME":
+        return (
+            "📦 Status da assinatura: *Vitalícia*\n"
+            "Válida para sempre. Obrigado por apoiar o Listinha! 🙌"
+        )
 
     if until_ts:
-        dt = datetime.fromtimestamp(int(until_ts), pytz.timezone('America/Sao_Paulo'))
-        until = dt.strftime('%d/%m/%Y %H:%M')
-        return f"📦 Status da assinatura: *{state_pt}*\nVálida até: {until}"
+        tz = pytz.timezone("America/Sao_Paulo")
+        dt = datetime.fromtimestamp(int(until_ts), tz)
+        return f"📦 Status da assinatura: *{label}*\nVálida até: {dt:%d/%m/%Y %H:%M}"
 
-    return f"📦 Status da assinatura: *{state_pt}*"
-
+    return f"📦 Status da assinatura: *{label}*"
 
 def RESUMED_STATUS(state: str, until_ts: int | None) -> str:
     # No imports here; reuse STATUS_SUMMARY from this same module

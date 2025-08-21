@@ -55,6 +55,7 @@
       {% set s = result %}
       {% set stat = (s.billing_state_pt or s.billing_state or "-") %}
       {% set badge_cls = "badge" %}
+      {# Keep the badge green for LIFETIME as well #}
       {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" or s.billing_state == "LIFETIME" %}
         {% set badge_cls = "badge ok" %}
       {% elif s.billing_state == "PAST_DUE" %}

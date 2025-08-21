@@ -64,6 +64,9 @@ def compute_status(b: Dict[str, Any] | None) -> Tuple[str, Optional[int]]:
     if not b:
         return ("NONE", None)
 
+    if b.get("lifetime"):
+        return ("LIFETIME", None)
+
     ts_now = _now_ts()
     trial_end = _safe_int(b.get("trial_end"))
     grace_until = _safe_int(b.get("grace_until"))

@@ -122,7 +122,7 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
         "billing_state": state,                 # e.g., ACTIVE
         "billing_state_pt": state_pt,           # e.g., Ativa
         "billing_until_ts": until_ts,
-        "billing_until_fmt": _fmt_ts(until_ts),
+        "billing_until_fmt": "Para sempre" if state == "LIFETIME" else _fmt_ts(until_ts),
 
         "stripe_status": (billing.get("stripe_status") or ""),
         "subscription_id": billing.get("subscription_id"),
