@@ -55,7 +55,7 @@
       {% set s = result %}
       {% set stat = (s.billing_state_pt or s.billing_state or "-") %}
       {% set badge_cls = "badge" %}
-      {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" or s.billing_state == "LIFETIME" %}
+      {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" or s.billing_state == "LIFETIME" or s.billing_state == "EXEMPT" %}
         {% set badge_cls = "badge ok" %}
       {% elif s.billing_state == "PAST_DUE" %}
         {% set badge_cls = "badge warn" %}
@@ -90,16 +90,24 @@
       <!-- Admin Actions -->
       <h2>Ações de Assinatura (Admin)</h2>
 
-      <form method="post" action="{{ '/admin/revoke_exempt' if result.exempt else '/admin/grant_exempt' }}" style="display:flex; gap:8px; align-items:center;">
-        <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
-        {% if result.exempt %}
-          <button type="submit" style="background:#8a1e1e;">Revogar Isenção</button>
-          <span class="muted">Isenção: <b>Concedida</b></span>
-        {% else %}
-          <button type="submit">Conceder Isenção</button>
-          <span class="muted">Isenção: <b>Não concedida</b></span>
-        {% endif %}
-      </form>
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <form method="post" action="{{ '/admin/revoke_exempt' if result.exempt else '/admin/grant_exempt' }}" style="display:flex; gap:8px; align-items:center; margin: 6px 0;">
+          <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
+          {% if result.exempt %}
+            <button type="submit" style="background:#8a1e1e;">Revogar Isenção</button>
+            <span class="muted">Isenção: <b>Concedida</b></span>
+          {% else %}
+            <button type="submit">Conceder Isenção</button>
+            <span class="muted">Isenção: <b>Não concedida</b></span>
+          {% endif %}
+        </form>
+
+        <form method="post" action="/admin/refresh_from_stripe" style="display:flex; gap:8px; align-items:center; margin: 6px 0;">
+          <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
+          <button type="submit">Recarregar do Stripe</button>
+          <span class="muted">Atualiza os campos de billing conforme Stripe (sem alterar Isenção).</span>
+        </form>
+      </div>
 
       <details style="margin-top:12px;">
         <summary class="muted">Ver JSON bruto de billing</summary>
