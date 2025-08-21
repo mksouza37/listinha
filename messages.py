@@ -59,17 +59,16 @@ def CHECKOUT_LINK(url: str) -> str:
 
 # --- Billing messages (pt-BR) ---
 
+# Human-friendly PT labels for billing states
 STATUS_NAMES_PT = {
     "ACTIVE": "Ativa",
-    "TRIAL": "Ativa para teste - 30 dias grátis",
-    "TRIALING": "Ativa para teste - 30 dias grátis",
-    "GRACE": "Ativa para teste - 60 dias grátis por indicação",
-    "PAST_DUE": "Pagamento em atraso",
-    "UNPAID": "Pagamento em atraso",
-    "EXPIRED": "Expirada",
+    "TRIAL": "Teste",
+    "GRACE": "Carência",
+    "PAST_DUE": "Atrasada",
     "CANCELED": "Cancelada",
-    "CHECKOUT_COMPLETED": "Checkout concluído",
-    "LIFETIME": "Vitalícia",
+    "EXPIRED": "Expirada",
+    "NONE": "Sem assinatura",
+    "EXEMPT": "Isento",   # Isenção (admin) — bypass do Stripe
 }
 
 try:
@@ -106,21 +105,27 @@ def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
     )
 
 def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
-    label = STATUS_NAMES_PT.get(state, state)
+    """Mensagem de status (pt-BR) para WhatsApp."""
+    import pytz
+    from datetime import datetime
 
-    # Lifetime: say it explicitly and skip "válida até"
-    if state == "LIFETIME":
+    state_up = (state or "").upper()
+    name_pt = STATUS_NAMES_PT.get(state_up, state or "-")
+
+    # Isenção: não mostra 'válida até', pois não depende do Stripe
+    if state_up == "EXEMPT":
         return (
-            "📦 Status da assinatura: *Vitalícia*\n"
-            "Válida para sempre. Obrigado por apoiar o Listinha! 🙌"
+            f"📦 *Status da assinatura*: *{name_pt}*\n"
+            "Acesso liberado por isenção administrativa. "
+            "Quando preferir, você pode assinar normalmente pelo Portal."
         )
 
     if until_ts:
         tz = pytz.timezone("America/Sao_Paulo")
-        dt = datetime.fromtimestamp(int(until_ts), tz)
-        return f"📦 Status da assinatura: *{label}*\nVálida até: {dt:%d/%m/%Y %H:%M}"
+        until = datetime.fromtimestamp(int(until_ts), tz).strftime("%d/%m/%Y %H:%M")
+        return f"📦 *Status da assinatura*: *{name_pt}*\nVálida até: {until}"
 
-    return f"📦 Status da assinatura: *{label}*"
+    return f"📦 *Status da assinatura*: *{name_pt}*"
 
 def RESUMED_STATUS(state: str, until_ts: int | None) -> str:
     # No imports here; reuse STATUS_SUMMARY from this same module

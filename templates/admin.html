@@ -55,7 +55,6 @@
       {% set s = result %}
       {% set stat = (s.billing_state_pt or s.billing_state or "-") %}
       {% set badge_cls = "badge" %}
-      {# Keep the badge green for LIFETIME as well #}
       {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" or s.billing_state == "LIFETIME" %}
         {% set badge_cls = "badge ok" %}
       {% elif s.billing_state == "PAST_DUE" %}
@@ -91,21 +90,14 @@
       <!-- Admin Actions -->
       <h2>Ações de Assinatura (Admin)</h2>
 
-      <form method="post" action="/admin/extend_trial" style="display:flex; gap:8px; align-items:center; margin: 6px 0 12px;">
+      <form method="post" action="{{ '/admin/revoke_exempt' if result.exempt else '/admin/grant_exempt' }}" style="display:flex; gap:8px; align-items:center;">
         <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
-        <label for="days"><b>Adicionar dias ao próximo vencimento</b></label>
-        <input type="number" min="1" step="1" name="days" id="days" placeholder="Ex.: 30" style="width:140px;"/>
-        <button type="submit">Aplicar</button>
-      </form>
-
-      <form method="post" action="{{ '/admin/revoke_lifetime' if result.lifetime else '/admin/grant_lifetime' }}" style="display:flex; gap:8px; align-items:center;">
-        <input type="hidden" name="owner_phone" value="{{ result.doc_id }}"/>
-        {% if result.lifetime %}
-          <button type="submit" style="background:#8a1e1e;">Revogar Vitalício</button>
-          <span class="muted">Concessão vitalícia: <b>Concedido</b></span>
+        {% if result.exempt %}
+          <button type="submit" style="background:#8a1e1e;">Revogar Isenção</button>
+          <span class="muted">Isenção: <b>Concedida</b></span>
         {% else %}
-          <button type="submit">Conceder Vitalício</button>
-          <span class="muted">Concessão vitalícia: <b>Não concedido</b></span>
+          <button type="submit">Conceder Isenção</button>
+          <span class="muted">Isenção: <b>Não concedida</b></span>
         {% endif %}
       </form>
 
@@ -114,7 +106,6 @@
         <div class="raw">{{ s.billing_raw | tojson(indent=2) }}</div>
       </details>
 
-      <!-- Admin Audit -->
       <h2>Histórico (Admin Audit)</h2>
       {% if result.admin_audit and result.admin_audit|length > 0 %}
         <div class="row" style="font-weight:600;"><div>Quando (ts)</div><div>Ação / Detalhes</div></div>
