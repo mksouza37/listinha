@@ -109,6 +109,8 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
     state_pt = STATUS_NAMES_PT.get(state, state)
     audit = user.get("admin_audit", [])
 
+    lifetime_flag = bool(billing.get("lifetime"))
+
     derived = {
         "doc_id": e164,
         "name": user.get("name") or "",
@@ -119,8 +121,8 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
 
         # Billing block
         "billing_raw": billing,
-        "billing_state": state,                 # e.g., ACTIVE
-        "billing_state_pt": state_pt,           # e.g., Ativa
+        "billing_state": state,                 # e.g., ACTIVE / LIFETIME / ...
+        "billing_state_pt": state_pt,           # e.g., Ativa / Vitalícia
         "billing_until_ts": until_ts,
         "billing_until_fmt": "Para sempre" if state == "LIFETIME" else _fmt_ts(until_ts),
 
@@ -131,12 +133,13 @@ def _render_lookup_page(owner_phone: str, who: str, url_error: str = "") -> str:
         "last_checkout_url": billing.get("last_checkout_url"),
         "cancel_at_period_end": bool(billing.get("cancel_at_period_end")),
         "canceled": bool(billing.get("canceled")),
-        "cancel_at_fmt": _fmt_ts(billing.get("cancel_at")),
-        "canceled_at_fmt": _fmt_ts(billing.get("canceled_at")),
+        # Hide cancel dates if lifetime, or if not actually scheduled/canceled
+        "cancel_at_fmt": "-" if lifetime_flag or not bool(billing.get("cancel_at_period_end")) else _fmt_ts(billing.get("cancel_at")),
+        "canceled_at_fmt": "-" if lifetime_flag or not bool(billing.get("canceled")) else _fmt_ts(billing.get("canceled_at")),
         "current_period_end_fmt": _fmt_ts(billing.get("current_period_end")),
         "trial_end_fmt": _fmt_ts(billing.get("trial_end")),
         "grace_until_fmt": _fmt_ts(billing.get("grace_until")),
-        "lifetime": bool(billing.get("lifetime")),
+        "lifetime": lifetime_flag,
 
         # Admin audit history
         "admin_audit": audit,
@@ -186,8 +189,15 @@ def admin_grant_lifetime(
     if not e164:
         return RedirectResponse(url="/admin?err=invalid", status_code=302)
 
-    # Set lifetime flag on (bypass paywall)
-    update_user_billing(e164, {"lifetime": True, "last_updated": int(time.time())})
+    # Set lifetime flag ON and clear stale cancel info to avoid confusion
+    update_user_billing(e164, {
+        "lifetime": True,
+        "cancel_at_period_end": False,
+        "cancel_at": None,
+        "canceled": False,
+        "canceled_at": None,
+        "last_updated": int(time.time()),
+    })
 
     append_admin_audit(e164, {
         "ts": int(time.time()),
