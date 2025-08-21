@@ -61,9 +61,9 @@ def CHECKOUT_LINK(url: str) -> str:
 
 STATUS_NAMES_PT = {
     "ACTIVE": "Ativa",
-    "TRIAL": "Período de teste",
-    "TRIALING": "Período de teste",
-    "GRACE": "Período de carência",
+    "TRIAL": "Ativa para teste - 30 dias grátis",
+    "TRIALING": "Ativa para teste - 30 dias grátis",
+    "GRACE": "Ativa para teste - 60 dias grátis por indicação",
     "PAST_DUE": "Pagamento em atraso",
     "UNPAID": "Pagamento em atraso",
     "EXPIRED": "Expirada",

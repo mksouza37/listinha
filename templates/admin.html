@@ -1,64 +1,98 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Listinha Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; padding:2rem; }
-    .card { max-width: 760px; margin: 0 auto; background:#fff; border-radius:12px; padding:1.25rem 1.25rem 1.5rem; box-shadow: 0 6px 18px rgba(0,0,0,0.08);}
-    h1 { margin: 0 0 1rem 0; font-size: 1.25rem; }
-    form { display:flex; gap:.5rem; margin-bottom: 1rem; }
-    input[type="text"] { flex:1; padding:.6rem .75rem; border:1px solid #d0d4da; border-radius:8px; font-size: .95rem; }
-    button { padding:.6rem .9rem; border:0; border-radius:8px; background:#111; color:#fff; font-weight:600; cursor:pointer; }
-    .error { color:#b00020; margin:.5rem 0 0; }
-    .section { border-top:1px solid #eee; padding-top:1rem; margin-top:1rem; }
-    table { width:100%; border-collapse: collapse; margin-top:.5rem;}
-    th, td { text-align:left; padding:.35rem .25rem; border-bottom:1px solid #eee; font-size:.94rem; }
-    code { background:#f2f3f5; padding:.1rem .35rem; border-radius:6px; }
-    .muted { color:#666; font-size:.9rem; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem; color:#444; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#f7f7f8; color:#111; }
+    .container { max-width: 900px; margin: 24px auto; background: #fff; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.06); padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    h2 { font-size: 18px; margin-top: 28px; border-top: 1px solid #eee; padding-top: 16px; }
+    form { display:flex; gap:8px; margin-bottom:16px; }
+    input[type=text] { flex:1; padding:10px 12px; border:1px solid #ddd; border-radius:10px; }
+    button { padding:10px 14px; border:0; border-radius:10px; background:#111; color:#fff; font-weight:600; cursor:pointer; }
+    .muted { color:#666; font-size: 12px; }
+    .row { display:grid; grid-template-columns: 240px 1fr; gap:8px; padding:8px 0; border-bottom:1px dashed #eee; }
+    .row b { color:#333; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#f1f1f3; }
+    .ok { background:#e8f7ee; color:#126b3e; }
+    .warn { background:#fff7e5; color:#8a5b00; }
+    .danger { background:#ffefef; color:#8a1e1e; }
+    a { color: #0969da; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .raw { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; background:#fafafa; border:1px solid #eee; padding:12px; border-radius:10px; }
+    .err { color:#8a1e1e; background:#ffefef; padding:10px 12px; border-radius:10px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="topbar">
-      <h1>🔐 Listinha Admin</h1>
-      <div class="muted">Signed in as <strong>{{ who }}</strong></div>
-    </div>
+  <div class="container">
+    <h1>Listinha Admin</h1>
 
     <form method="post" action="/admin/lookup">
-      <input type="text" name="owner_phone" placeholder="+55 11 91234-5678" value="{{ query|e }}" />
+      <input type="text" name="owner_phone" value="{{ query }}" placeholder="+55 11 98888-8888" />
       <button type="submit">Lookup</button>
     </form>
+
     {% if error %}
-      <div class="error">{{ error }}</div>
+      <div class="err">{{ error }}</div>
     {% endif %}
 
     {% if result %}
-      <div class="section">
-        <h2>Owner</h2>
-        <table>
-          <tr><th>Phone (doc id)</th><td><code>{{ result.doc_id }}</code></td></tr>
-          <tr><th>Name</th><td>{{ result.name or "—" }}</td></tr>
-          <tr><th>List Role</th><td>{{ result.group_role or "—" }} (Dono/Convidado)</td></tr>
-        </table>
+      <h2>Owner</h2>
+      <div class="row"><b>Phone (doc id)</b><div class="badge">{{ result.doc_id }}</div></div>
+      <div class="row"><b>Name</b><div>{{ result.name or "-" }}</div></div>
+      <div class="row"><b>List Role</b><div>{{ result.group_role or "-" }} <span class="muted">(Dono/Convidado)</span></div></div>
+
+      <h2>List Context</h2>
+      <div class="row"><b>Instance</b><div>{{ result.group_instance or "-" }}</div></div>
+      <div class="row"><b>Owner</b><div>{{ result.group_owner or "-" }}</div></div>
+      <div class="row"><b>List</b><div>{{ result.group_list or "-" }}</div></div>
+
+      <h2>Billing</h2>
+      {% set s = result %}
+      {% set stat = (s.billing_state_pt or s.billing_state or "-") %}
+      {% set badge_cls = "badge" %}
+      {% if s.billing_state == "ACTIVE" or s.billing_state == "TRIAL" or s.billing_state == "GRACE" %}
+        {% set badge_cls = "badge ok" %}
+      {% elif s.billing_state == "PAST_DUE" %}
+        {% set badge_cls = "badge warn" %}
+      {% elif s.billing_state == "CANCELED" or s.billing_state == "EXPIRED" %}
+        {% set badge_cls = "badge danger" %}
+      {% endif %}
+
+      <div class="row"><b>Status (computado)</b><div><span class="{{ badge_cls }}">{{ stat }}</span></div></div>
+      <div class="row"><b>Válida até (computado)</b><div>{{ s.billing_until_fmt }}</div></div>
+
+      <div class="row"><b>Stripe status (bruto)</b><div>{{ s.stripe_status or "-" }}</div></div>
+      <div class="row"><b>Período atual até</b><div>{{ s.current_period_end_fmt }}</div></div>
+      <div class="row"><b>Fim do teste</b><div>{{ s.trial_end_fmt }}</div></div>
+      <div class="row"><b>Carência até</b><div>{{ s.grace_until_fmt }}</div></div>
+
+      <div class="row"><b>Cancelamento agendado?</b><div>{{ "Sim" if s.cancel_at_period_end else "Não" }}</div></div>
+      <div class="row"><b>Cancelamento em</b><div>{{ s.cancel_at_fmt }}</div></div>
+      <div class="row"><b>Cancelado agora?</b><div>{{ "Sim" if s.canceled else "Não" }}</div></div>
+      <div class="row"><b>Cancelado em</b><div>{{ s.canceled_at_fmt }}</div></div>
+
+      <div class="row"><b>Subscription ID</b><div>{{ s.subscription_id or "-" }}</div></div>
+      <div class="row"><b>Customer ID</b><div>{{ s.stripe_customer_id or "-" }}</div></div>
+      <div class="row"><b>Last Event ID</b><div>{{ s.last_event_id or "-" }}</div></div>
+      <div class="row"><b>Último link de Checkout</b>
+        <div>
+          {% if s.last_checkout_url %}
+            <a href="{{ s.last_checkout_url }}" target="_blank" rel="noopener">Abrir</a>
+          {% else %}-{% endif %}
+        </div>
       </div>
 
-      <div class="section">
-        <h2>List Context</h2>
-        <table>
-          <tr><th>Instance</th><td>{{ result.group_instance or "default" }}</td></tr>
-          <tr><th>Owner</th><td>{{ result.group_owner or "—" }}</td></tr>
-          <tr><th>List</th><td>{{ result.group_list or "—" }}</td></tr>
-        </table>
-      </div>
-
-      <div class="section">
-        <h2>Billing (Phase 2 placeholder)</h2>
-        <div class="muted">No billing fields yet. They will appear here in Phase 2.</div>
-      </div>
+      <details style="margin-top:12px;">
+        <summary class="muted">Ver JSON bruto de billing</summary>
+        <div class="raw">{{ s.billing_raw | tojson(indent=2) }}</div>
+      </details>
     {% endif %}
+
+    <p class="muted" style="margin-top:20px;">Logado como: {{ who }}</p>
   </div>
 </body>
 </html>
