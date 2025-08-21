@@ -73,6 +73,11 @@ def _fmt_ts(ts: int | None) -> str:
 
 
 def _stripe_refresh_patch(phone: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the user's subscription from Stripe and return a billing patch
+    mirroring Stripe. Robustly fills current_period_end using latest invoice
+    if the field isn't present on the subscription object.
+    """
     try:
         import stripe
     except Exception:
@@ -90,15 +95,30 @@ def _stripe_refresh_patch(phone: str) -> Optional[Dict[str, Any]]:
     sub_id = b.get("subscription_id")
     cust_id = b.get("stripe_customer_id")
 
+    def _g(obj, key):
+        # Works for dict-like stripe objects and stripe resource objects
+        return obj.get(key) if hasattr(obj, "get") else getattr(obj, key, None)
+
     sub = None
     try:
         if sub_id:
-            sub = stripe.Subscription.retrieve(sub_id)  # plain retrieve first
+            # Expand useful bits (latest_invoice, price/recurring)
+            sub = stripe.Subscription.retrieve(
+                sub_id,
+                expand=["latest_invoice", "items.data.price", "items.data.price.recurring"],
+            )
         elif cust_id:
-            subs = stripe.Subscription.list(customer=cust_id, status="all", limit=10)
+            subs = stripe.Subscription.list(
+                customer=cust_id, status="all", limit=10,
+                expand=["data.latest_invoice", "data.items.data.price", "data.items.data.price.recurring"],
+            )
             data = subs.get("data", [])
+            # prefer active/trialing; otherwise most recent by current_period_end
             priority = {"active": 0, "trialing": 1, "past_due": 2, "unpaid": 3, "canceled": 4}
-            data = sorted(data, key=lambda s: (priority.get((s.get("status") or ""), 9), -(s.get("current_period_end") or 0)))
+            data = sorted(
+                data or [],
+                key=lambda s: (priority.get((s.get("status") or ""), 9), -(s.get("current_period_end") or 0)),
+            )
             sub = data[0] if data else None
     except Exception as e:
         print("⚠️ Stripe retrieve/list error:", str(e))
@@ -108,27 +128,25 @@ def _stripe_refresh_patch(phone: str) -> Optional[Dict[str, Any]]:
         print("ℹ️ No subscription found for refresh.")
         return None
 
-    def _g(obj, key):  # works for dict-like stripe objects
-        return obj.get(key) if hasattr(obj, "get") else getattr(obj, key, None)
-
     status = (_g(sub, "status") or "").upper()
     cpe = _g(sub, "current_period_end")
     te  = _g(sub, "trial_end")
 
-    # Fallback: derive from latest invoice if current_period_end is missing
+    # Fallback: derive from latest invoice (use period.end, not start)
     if not cpe:
         try:
-            latest_inv_id = _g(sub, "latest_invoice")
-            if latest_inv_id:
-                inv = stripe.Invoice.retrieve(latest_inv_id, expand=["lines"])
-                # Try invoice-level period first
-                if inv and inv.get("period_end"):
+            inv = _g(sub, "latest_invoice")
+            if isinstance(inv, str):
+                inv = stripe.Invoice.retrieve(inv, expand=["lines"])
+            # Prefer line-level period.end (most accurate for subscriptions)
+            if inv:
+                lines = (inv.get("lines", {}) or {}).get("data", [])
+                if lines:
+                    per = (lines[0].get("period") or {})
+                    cpe = per.get("end") or per.get("end_time")  # ensure we take END
+                # Secondary fallback: invoice.period_end (if present)
+                if not cpe and inv.get("period_end"):
                     cpe = inv["period_end"]
-                # Otherwise derive from the first line period
-                if not cpe and inv and inv.get("lines", {}).get("data"):
-                    line0 = inv["lines"]["data"][0]
-                    per = (line0.get("period") or {})
-                    cpe = per.get("end") or per.get("end_time")
         except Exception as e:
             print("ℹ️ Could not derive period end from latest invoice:", str(e))
 
