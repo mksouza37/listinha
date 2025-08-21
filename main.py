@@ -1006,6 +1006,7 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # /c (gerenciar assinatura) — always allowed, never gated
+        # /c (gerenciar assinatura) — always allowed, never gated
         if cmd in ("/c", "c", "/portal", "portal", "gerenciar", "/gerenciar"):
             cfg = load_config()
 
@@ -1015,13 +1016,14 @@ async def whatsapp_webhook(request: Request):
 
             try:
                 if state in {"ACTIVE", "TRIAL", "GRACE"}:
-                    # Create a Customer Portal session
-                    customer_id = ensure_customer(phone)
+                    # ✅ create_billing_portal_session expects PHONE and returns a URL string
                     return_url = f"{cfg.domain_url}/billing/return?phone={phone}"
-                    portal = create_billing_portal_session(customer_id, return_url)
-                    send_message(from_number, PORTAL_LINK(portal["url"]))
+                    portal_url = create_billing_portal_session(phone, return_url)
+                    send_message(from_number, PORTAL_LINK(portal_url))
                 else:
                     # Not active → send Checkout so the user can start a subscription
+                    group = get_user_group(phone) or {}
+                    instance_id = group.get("instance", "default")
                     checkout = create_checkout_session(phone=phone, instance_id=instance_id)
                     send_message(from_number, PORTAL_INACTIVE_CHECKOUT(checkout["url"]))
             except Exception as e:
