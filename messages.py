@@ -59,6 +59,18 @@ def CHECKOUT_LINK(url: str) -> str:
 
 # --- Billing messages (pt-BR) ---
 
+STATUS_NAMES_PT = {
+    "ACTIVE": "Ativa",
+    "TRIAL": "Período de teste",
+    "TRIALING": "Período de teste",
+    "GRACE": "Período de carência",
+    "PAST_DUE": "Pagamento em atraso",
+    "UNPAID": "Pagamento em atraso",
+    "EXPIRED": "Expirada",
+    "CANCELED": "Cancelada",
+    "CHECKOUT_COMPLETED": "Checkout concluído",
+}
+
 try:
     from zoneinfo import ZoneInfo
     _TZ = ZoneInfo("America/Sao_Paulo")
@@ -95,11 +107,18 @@ def PORTAL_INACTIVE_CHECKOUT(url: str) -> str:
 def STATUS_SUMMARY(state: str, until_ts: int | None) -> str:
     from datetime import datetime
     import pytz
+
+    # Converte a sigla/estado técnico para PT-BR, mantendo fallback seguro
+    key = (state or "").upper()
+    state_pt = STATUS_NAMES_PT.get(key, state)
+
     if until_ts:
         dt = datetime.fromtimestamp(int(until_ts), pytz.timezone('America/Sao_Paulo'))
         until = dt.strftime('%d/%m/%Y %H:%M')
-        return f"📦 Status da assinatura: *{state}*\nVálida até: {until}"
-    return f"📦 Status da assinatura: *{state}*"
+        return f"📦 Status da assinatura: *{state_pt}*\nVálida até: {until}"
+
+    return f"📦 Status da assinatura: *{state_pt}*"
+
 
 def RESUMED_STATUS(state: str, until_ts: int | None) -> str:
     # No imports here; reuse STATUS_SUMMARY from this same module
