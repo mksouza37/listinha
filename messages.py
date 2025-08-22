@@ -55,6 +55,17 @@ HOW_TO_PAY = "Envie c para receber o link de pagamento."
 def CHECKOUT_LINK(url: str) -> str:
     return f"🔗 Ative aqui sua assinatura:\n{url}"
 
+AFTER_TRIAL_BLOCK = (
+    "⛔ Seu período de teste terminou.\n\n"
+    "Para continuar usando a *Listinha*, escolha uma opção:\n"
+    "• Envie */z* e ganhe +60 dias grátis ajudando a divulgar\n"
+    "• Envie */c* para assinar agora"
+)
+
+Z_BONUS_GRANTED = "🎁 Bônus aplicado: +60 dias liberados a partir de agora."
+Z_BONUS_ALREADY_USED = "⚠️ O bônus de 60 dias já foi utilizado nesta conta."
+Z_BONUS_NOT_AVAILABLE = "ℹ️ O bônus de 60 dias pode ser ativado após o fim do seu período de teste."
+
 # Dynamic messages
 
 # --- Billing messages (pt-BR) ---

@@ -116,14 +116,15 @@ def _gate_if_needed(cmd: str, phone: str) -> bool:
     """Returns True if processing should STOP (i.e., not allowed)."""
     if cmd not in GATED_COMMANDS:
         return False  # open command
+
     ok, state, until_ts = require_active_or_trial(phone)
     if ok:
         return False
-    # Not ok -> tell how to pay and stop
-    from messages import PAYMENT_REQUIRED, HOW_TO_PAY
-    send_message(f"whatsapp:{phone}", f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}")
-    return True
 
+    # Not ok -> explain both options: /z (60 days) or /c (pay)
+    from messages import AFTER_TRIAL_BLOCK
+    send_message(f"whatsapp:{phone}", AFTER_TRIAL_BLOCK)
+    return True
 
 # ---------- Helpers to send updated views ----------
 
@@ -566,34 +567,41 @@ async def whatsapp_webhook(request: Request):
                 name = name.capitalize()
 
             if not name:
-                send_message(from_number,NAMELESS_OPENING)
+                send_message(from_number, NAMELESS_OPENING)
                 return {"status": "ok"}
 
             if user_in_list(phone):
                 send_message(from_number, ALREADY_IN_LIST)
             else:
+                # --- Internal free trial (no Stripe) ---
+                now = int(time.time())
+                # allow fractional days for testing, e.g., 0.0035 ≈ 5 minutes
+                try:
+                    trial_days = float(os.getenv("TRIAL_DAYS_DEFAULT", "30"))
+                except Exception:
+                    trial_days = 30.0
+                trial_end = now + int(trial_days * 24 * 3600)
 
-                cfg = load_config()
-                if cfg.paywall_on_listinha:
-                    ok, state, _ = require_active_or_trial(phone)
-                    if not ok:
-                        # Send a fresh checkout link
-                        group = get_user_group(phone)
-                        instance_id = group.get("instance", "default") if group else "default"
-                        try:
-                            sess = create_checkout_session(phone, instance_id)
-                            url = sess["url"]
-                            update_user_billing(phone, {"last_checkout_url": url, "last_updated": int(time.time())})
-                            send_message(from_number, f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}\n\n{CHECKOUT_LINK(url)}")
-                        except Exception as e:
-                            print("Stripe error on listinha paywall:", str(e))
-                            send_message(from_number, f"{PAYMENT_REQUIRED}\n{HOW_TO_PAY}")
-                        return {"status": "ok"}
+                update_user_billing(phone, {
+                    "trial_end": trial_end,
+                    "stripe_status": "TRIALING",  # informational only for admin
+                    "last_updated": now
+                })
 
+                # Create the list and set the user as Dono (first time, not transfer)
+                # NOTE: uses the existing `instance_id` from the webhook context
                 create_new_list(phone, instance_id, name)
-                send_message(from_number, list_created(f"*{name}*"))
-                # Optional: immediately show empty (or default) list
+
+                # Welcome message (first-time owner)
+                send_message(
+                    from_number,
+                    f"Bem-vindo à Listinha, {name}. 🎁 Sua assinatura de teste de *30 dias* foi ativada! "
+                    "Aproveite a Listinha à vontade nesse período."
+                )
+
+                # Optional: immediately show the (current) list
                 _send_current_list(from_number, phone)
+
             return {"status": "ok"}
 
         # Check if user exists before other commands
@@ -930,17 +938,41 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         if cmd == "/z":
-            # 1) Instruction message
+            # --- 0) Status & eligibility check ---
+            now = int(time.time())
+            b = get_user_billing(phone) or {}
+            state, _ = compute_status(b)  # uses trial_end/grace_until/stripe info
+
+            # A. If already paying or still within a free window, do NOT grant
+            #    Paying: ACTIVE
+            #    Free window: TRIAL or GRACE
+            if state in {"ACTIVE", "TRIAL", "GRACE"}:
+                send_message(from_number, "ℹ️ O bônus de 60 dias pode ser ativado após o fim do seu período de teste.")
+            else:
+                # B. Only after trial/without sub: EXPIRED / NONE / CANCELED can get the 60-day bonus
+                if b.get("z_bonus_used"):
+                    send_message(from_number, "⚠️ O bônus de 60 dias já foi utilizado nesta conta.")
+                else:
+                    # Allow fractional days for testing (e.g., Z_BONUS_DAYS_DEFAULT=0.0069 ≈ 10min)
+                    try:
+                        z_days = float(os.getenv("Z_BONUS_DAYS_DEFAULT", "60"))
+                    except Exception:
+                        z_days = 60.0
+                    grace_until = now + int(z_days * 24 * 3600)
+                    update_user_billing(phone, {
+                        "grace_until": grace_until,
+                        "z_bonus_used": True,
+                        "last_updated": now,
+                    })
+                    send_message(from_number, "🎁 Bônus aplicado: +60 dias liberados a partir de agora.")
+
+            # --- 1) Instruction message (keep your viral flow) ---
             send_message(from_number, z_step1_instructions())
 
-            # 2) Ready-to-copy message
+            # --- 2) Ready-to-copy message + 3) Short demo video ---
             full_text = indication_text(PUBLIC_DISPLAY_NUMBER)
-            #send_message(from_number, full_text)
-
-            # 3) Short demo video
             demo_url = "https://listinha-t5ga.onrender.com/static/listinha-demo.mp4"
             send_video(from_number, demo_url, caption=full_text)
-            #send_video(from_number, demo_url, caption="👀 Veja a Listinha em ação em poucos segundos.")
 
             return {"status": "ok"}
 
