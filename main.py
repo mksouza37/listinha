@@ -113,17 +113,23 @@ def normalize_phone(raw_phone: str, admin_phone: str) -> str or None:
     return None  # Fallback for any failure
 
 def _gate_if_needed(cmd: str, phone: str) -> bool:
-    """Returns True if processing should STOP (i.e., not allowed)."""
+    """Return True to STOP processing (blocked)."""
     if cmd not in GATED_COMMANDS:
         return False  # open command
 
     ok, state, until_ts = require_active_or_trial(phone)
     if ok:
-        return False
+        return False  # allowed (ACTIVE/TRIAL/GRACE/EXEMPT)
 
-    # Not ok -> explain both options: /z (60 days) or /c (pay)
-    from messages import AFTER_TRIAL_BLOCK
-    send_message(f"whatsapp:{phone}", AFTER_TRIAL_BLOCK)
+    # Not allowed → choose message based on whether /z bonus was already used
+    b = get_user_billing(phone) or {}
+    used = bool(b.get("z_bonus_used"))
+
+    from messages import AFTER_TRIAL_BLOCK, AFTER_TRIAL_BLOCK_PAY_ONLY
+    msg = AFTER_TRIAL_BLOCK_PAY_ONLY if used else AFTER_TRIAL_BLOCK
+
+    # Note: function may not have from_number in scope; send to the phone directly:
+    send_message(f"whatsapp:{phone}", msg)
     return True
 
 # ---------- Helpers to send updated views ----------

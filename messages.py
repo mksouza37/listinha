@@ -58,8 +58,14 @@ def CHECKOUT_LINK(url: str) -> str:
 AFTER_TRIAL_BLOCK = (
     "⛔ Seu período de teste terminou.\n\n"
     "Para continuar usando a *Listinha*, escolha uma opção:\n"
-    "• Envie */z* e ganhe +60 dias grátis ajudando a divulgar\n"
-    "• Envie */c* para assinar agora"
+    "• Envie *z* e ganhe +60 dias grátis ajudando a divulgar\n"
+    "• Envie *c* para assinar agora"
+)
+
+AFTER_TRIAL_BLOCK_PAY_ONLY = (
+    "⛔ Seu bônus de 60 dias grátis terminou.\n\n"
+    "Para continuar usando a *Listinha*:\n"
+    "• Envie *c* para assinar agora"
 )
 
 Z_BONUS_GRANTED = "🎁 Bônus aplicado: +60 dias liberados a partir de agora."
@@ -73,7 +79,7 @@ Z_BONUS_NOT_AVAILABLE = "ℹ️ O bônus de 60 dias pode ser ativado após o fim
 STATUS_NAMES_PT = {
     "ACTIVE": "Ativa",
     "TRIAL": "Teste",
-    "GRACE": "Carência",
+    "GRACE": "60 dias de bônus",
     "PAST_DUE": "Atrasada",
     "CANCELED": "Cancelada",
     "EXPIRED": "Expirada",
