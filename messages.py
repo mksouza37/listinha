@@ -51,7 +51,7 @@ NOT_OWNER_CANNOT_CLEAR = "❌ Só o Dono da Listinha pode limpar todos os itens.
 PAYMENT_REQUIRED = (
     "💳 Para usar a *Listinha*, é necessário ativar sua assinatura."
 )
-HOW_TO_PAY = "Envie *pagar* para receber o link ou use o link abaixo."
+HOW_TO_PAY = "Envie c para receber o link de pagamento."
 def CHECKOUT_LINK(url: str) -> str:
     return f"🔗 Ative aqui sua assinatura:\n{url}"
 
@@ -59,7 +59,6 @@ def CHECKOUT_LINK(url: str) -> str:
 
 # --- Billing messages (pt-BR) ---
 
-# Human-friendly PT labels for billing states
 STATUS_NAMES_PT = {
     "ACTIVE": "Ativa",
     "TRIAL": "Teste",
@@ -68,7 +67,7 @@ STATUS_NAMES_PT = {
     "CANCELED": "Cancelada",
     "EXPIRED": "Expirada",
     "NONE": "Sem assinatura",
-    "EXEMPT": "Isenta",   # Isenção (admin) — bypass do Stripe
+    "EXEMPT": "Isenta",
 }
 
 try:

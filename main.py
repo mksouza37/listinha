@@ -944,8 +944,8 @@ async def whatsapp_webhook(request: Request):
 
             return {"status": "ok"}
 
-        # Payment link (/pagar)
-        if cmd == "/pagar":
+        # Payment link (/c)
+        if cmd in ("/c", "c"):
             # Read current billing state
             b = get_user_billing(phone) or {}
             state, _ = compute_status(b)
@@ -998,16 +998,15 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok"}
 
         # Status summary
-        if cmd == "/status":
+        if cmd in ("/w", "w"):
             b = get_user_billing(phone) or {}
             state, until_ts = compute_status(b)
             send_message(from_number, STATUS_SUMMARY(state, until_ts))
             print("DEBUG billing doc:", b)
             return {"status": "ok"}
 
-        # /c (gerenciar assinatura) — always allowed, never gated
-        # /c (gerenciar assinatura) — always allowed, never gated
-        if cmd in ("/c", "c", "/portal", "portal", "gerenciar", "/gerenciar"):
+        # /g (gerenciar assinatura) — always allowed, never gated
+        if cmd in ("/g", "g"):
             cfg = load_config()
 
             # Read current status to decide portal vs checkout
